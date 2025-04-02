@@ -2000,26 +2000,97 @@ app.get('/transcribe', async (req, res) => {
             throw new Error('לא נמצא פורמט אודיו מתאים לתמלול');
         }
         
-        console.log(`[${requestId}] Audio URL found, now downloading to server...`);
+        console.log(`[${requestId}] Audio URL found, now downloading to server using streaming...`);
         
         // 3. Download the audio file to the server
-        const audioResponse = await fetch(audioUrl);
-        if (!audioResponse.ok) {
-            throw new Error(`שגיאה בהורדת קובץ האודיו: ${audioResponse.status} ${audioResponse.statusText}`);
+        console.log(`[${requestId}] Audio URL found, now downloading to server using streaming...`);
+        
+        // Use our own proxy to avoid CORS issues
+        const proxyUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/proxy?url=${encodeURIComponent(audioUrl)}`;
+        console.log(`[${requestId}] Using proxy URL: ${proxyUrl}`);
+        
+        // Create a unique temporary filename
+        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
+        console.log(`[${requestId}] Will save audio to: ${tempFileName}`);
+        
+        // Use http or https module directly for better streaming control
+        const protocol = proxyUrl.startsWith('https') ? https : http;
+        
+        // Create a file write stream
+        const fileStream = fs.createWriteStream(tempFileName);
+        let downloadSucceeded = false;
+        
+        // Use a Promise to handle the streaming process
+        await new Promise((resolve, reject) => {
+            const request = protocol.get(proxyUrl, (response) => {
+                // Check if response is successful
+                if (response.statusCode !== 200) {
+                    return reject(new Error(`Failed to download audio: Status ${response.statusCode}`));
+                }
+                
+                // Log download info
+                console.log(`[${requestId}] Download started. Content-Type: ${response.headers['content-type']}, Length: ${response.headers['content-length'] || 'unknown'}`);
+                
+                // Track download progress
+                let downloadedBytes = 0;
+                response.on('data', (chunk) => {
+                    downloadedBytes += chunk.length;
+                    if (downloadedBytes % 1000000 === 0) { // Log every ~1MB
+                        console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB so far...`);
+                    }
+                });
+                
+                // Pipe directly to file
+                response.pipe(fileStream);
+                
+                // Handle completion
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    console.log(`[${requestId}] Download complete. Total: ${downloadedBytes} bytes`);
+                    // Check file size to ensure we got data
+                    const stats = fs.statSync(tempFileName);
+                    if (stats.size === 0) {
+                        fs.unlinkSync(tempFileName); // Clean up empty file
+                        reject(new Error('Downloaded file is empty'));
+                    } else {
+                        downloadSucceeded = true;
+                        resolve();
+                    }
+                });
+                
+                // Handle errors during streaming
+                response.on('error', (err) => {
+                    fileStream.close();
+                    fs.unlinkSync(tempFileName); // Clean up
+                    reject(err);
+                });
+            });
+            
+            // Handle request errors
+            request.on('error', (err) => {
+                fileStream.close();
+                fs.unlinkSync(tempFileName); // Clean up
+                reject(err);
+            });
+            
+            // Set timeout
+            request.setTimeout(120000, () => { // 2 minutes
+                request.destroy();
+                fileStream.close();
+                fs.unlinkSync(tempFileName); // Clean up
+                reject(new Error('Download request timed out after 120 seconds'));
+            });
+        });
+        
+        if (!downloadSucceeded) {
+            throw new Error('Failed to download audio file for transcription');
         }
         
-        // Convert to buffer/blob
-        const audioBuffer = await audioResponse.arrayBuffer();
-        const audioBlob = Buffer.from(audioBuffer);
-        
-        // Save to a temporary file if needed
-        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
-        fs.writeFileSync(tempFileName, audioBlob);
-        console.log(`[${requestId}] Audio saved to temporary file: ${tempFileName} (${audioBlob.length} bytes)`);
+        console.log(`[${requestId}] Audio file saved successfully at: ${tempFileName}`);
         
         // 4. Prepare the form data for ElevenLabs API
         const formData = new FormData();
-        // For Node.js form-data, we need to use the file path 
+        // Use file from disk for more reliable upload
         formData.append('file', fs.createReadStream(tempFileName));
         formData.append('model_id', 'scribe_v1'); // ElevenLabs model
         formData.append('timestamps_granularity', 'word');
