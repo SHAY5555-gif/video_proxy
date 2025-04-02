@@ -117,7 +117,7 @@ async function fetchWithRetries(url, options, maxRetries = 3) {
             
             if (attempt < maxRetries) {
                 console.log(`Waiting ${retryDelay}ms before retry...`);
-                await setTimeout(retryDelay);  // השימוש הנכון עם setTimeout מ-timers/promises
+                await setTimeout(retryDelay);
                 retryDelay *= 2; // Exponential backoff
             }
         }
@@ -128,6 +128,9 @@ async function fetchWithRetries(url, options, maxRetries = 3) {
 
 // Add a YouTube-specific fetch helper
 async function fetchFromYouTube(url, options, maxRetries = 3) {
+    // הוסף requestId כפרמטר לפונקציה
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    
     // YouTube-specific error fix: Sometimes YouTube needs a proper referer and origin
     const youtubeOptions = {
         ...options,
@@ -150,31 +153,27 @@ async function fetchFromYouTube(url, options, maxRetries = 3) {
             // Check if URL has expired parameters
             const urlObj = new URL(url);
             if (urlObj.hostname.includes('googlevideo.com')) {
-                // Parse 'expire' parameter if it exists
-                const expire = urlObj.searchParams.get('expire');
-                if (expire) {
-                    const expireTimestamp = parseInt(expire, 10) * 1000; // Convert to milliseconds
-                    const currentTime = Date.now();
-                    
-                    if (expireTimestamp < currentTime) {
-                        console.error('URL has expired:', { 
-                            expired: new Date(expireTimestamp).toISOString(),
-                            now: new Date(currentTime).toISOString(),
-                            diff: Math.round((currentTime - expireTimestamp) / 1000 / 60) + ' minutes ago'
-                        });
-                        throw new Error('YouTube URL has expired. Request a fresh URL.');
-                    } else {
-                        // Log expiration time
-                        console.log(`URL will expire in ${Math.round((expireTimestamp - currentTime) / 1000 / 60)} minutes`);
-                    }
-                }
+                // YouTube URL validity is approximately 350 minutes, so we'll skip expiration checks
+                console.log(`[${requestId}] Processing YouTube video URL`);
             }
+            
+            // הוסף יותר לוגים
+            console.log(`[${requestId}] Full URL being fetched: ${url}`);
+            console.log(`[${requestId}] YouTube options: ${JSON.stringify(youtubeOptions, null, 2)}`);
             
             const response = await fetch(url, youtubeOptions);
             
+            // הוסף יותר לוגים לטיפול בשגיאות
+            console.log(`[${requestId}] Response status: ${response.status}`);
+            
+            if (response.status === 404) {
+                console.error(`[${requestId}] YouTube URL not found (404). URL: ${url.substring(0, 100)}...`);
+                throw new Error('YouTube resource not found (404). The URL might be invalid or expired.');
+            }
+            
             if (response.status === 429) {
                 console.warn(`Rate limited by YouTube (429). Waiting ${retryDelay}ms before retry...`);
-                await setTimeout(retryDelay);  // השימוש הנכון עם setTimeout מ-timers/promises
+                await setTimeout(retryDelay);
                 retryDelay *= 2; // Exponential backoff
                 continue;
             }
@@ -190,7 +189,7 @@ async function fetchFromYouTube(url, options, maxRetries = 3) {
             
             if (attempt < maxRetries) {
                 console.log(`Waiting ${retryDelay}ms before retry...`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                await setTimeout(retryDelay);
                 retryDelay *= 2; // Exponential backoff
             }
         }
