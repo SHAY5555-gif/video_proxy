@@ -1868,6 +1868,7 @@ app.use((req, res) => {
         </html>
     `);
 });
+// NOTE: 404 handler has been moved to the end of the file to ensure all routes are properly matched
 
 // Default port listener
 app.listen(PORT, () => {
@@ -2020,26 +2021,34 @@ app.get('/transcribe', async (req, res) => {
         
         // STEP 2: DOWNLOAD THE AUDIO to our server (this is the critical part)
         console.log(`[${requestId}] STEP 2: DOWNLOADING AUDIO FILE TO SERVER`);
+        
+        // Create a unique temporary filename
         const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
         console.log(`[${requestId}] Audio will be saved to: ${tempFileName}`);
         
+        // Use our own proxy to avoid CORS and YouTube restrictions
+        const proxyUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/proxy?url=${encodeURIComponent(audioUrl)}`;
+        console.log(`[${requestId}] Using proxy URL: ${proxyUrl}`);
+        
         try {
-            // FORCED DIRECT DOWNLOAD - no streaming, no fetch, just direct file writing
-            const protocol = audioUrl.startsWith('https') ? https : http;
+            // FORCED DIRECT DOWNLOAD - still using our proxy but saving as file
+            const protocol = proxyUrl.startsWith('https') ? https : http;
             
             // Create a promise for the download
             await new Promise((resolve, reject) => {
                 const fileStream = fs.createWriteStream(tempFileName);
                 
-                console.log(`[${requestId}] Starting direct file download...`);
+                console.log(`[${requestId}] Starting direct file download through our proxy...`);
                 
                 // Make the request explicitly
-                const request = protocol.get(audioUrl, {
+                const request = protocol.get(proxyUrl, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0',
-                        'Accept': '*/*'
+                        'Accept': '*/*',
+                        'Origin': 'https://www.youtube.com', // Added to help with YouTube access
+                        'Referer': 'https://www.youtube.com/' // Added to help with YouTube access
                     },
-                    timeout: 30000 // 30 seconds timeout
+                    timeout: 60000 // 60 seconds timeout
                 }, (response) => {
                     // Check status code
                     if (response.statusCode !== 200) {
