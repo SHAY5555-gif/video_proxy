@@ -1938,6 +1938,9 @@ app.get('/transcribe', async (req, res) => {
     const format = req.query.format || 'json'; // 'json', 'srt', or 'txt'
     const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
     
+    console.log(`[${requestId}] ========== STARTING TRANSCRIPTION PROCESS ==========`);
+    console.log(`[${requestId}] Video ID: ${videoId}, format: ${format}`);
+    
     if (!videoId) {
         return res.status(400).json({ 
             success: false,
@@ -1946,220 +1949,238 @@ app.get('/transcribe', async (req, res) => {
         });
     }
     
-    console.log(`[${requestId}] Transcription request for video ID: ${videoId}, format: ${format}`);
-    
     try {
-        // 1. Get video information using youtube-info endpoint
-        const infoUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/youtube-info?id=${videoId}`;
-        console.log(`[${requestId}] Fetching video info from: ${infoUrl}`);
+        // STEP 1: Get direct audio/video URL from ZM API
+        console.log(`[${requestId}] STEP 1: Getting direct media URL from ZM API`);
         
-        const infoResponse = await fetch(infoUrl);
-        if (!infoResponse.ok) {
-            const errorText = await infoResponse.text();
-            throw new Error(`שגיאה בקבלת מידע על הסרטון: ${infoResponse.status}. ${errorText}`);
+        // ZM API configuration
+        const zmApiKey = "hBsrDies";
+        const zmApiUrl = 'https://api.zm.io.vn/v1/social/autolink';
+        const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        
+        // Make request to ZM API
+        const zmResponse = await fetch(zmApiUrl, {
+            method: 'POST',
+            headers: {
+                'apikey': zmApiKey, 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: youtubeUrl })
+        });
+        
+        if (!zmResponse.ok) {
+            throw new Error(`ZM API error: ${zmResponse.status} ${zmResponse.statusText}`);
         }
         
-        const infoData = await infoResponse.json();
-        if (!infoData.success || !infoData.data) {
-            throw new Error('תגובה לא תקפה מנקודת הקצה של מידע הסרטון');
+        const zmData = await zmResponse.json();
+        
+        if (!zmData || !zmData.medias || !Array.isArray(zmData.medias)) {
+            throw new Error('Invalid data format received from ZM API');
         }
         
-        console.log(`[${requestId}] Successfully got video info. Looking for best audio format...`);
+        console.log(`[${requestId}] ZM API responded with ${zmData.medias.length} media options`);
         
-        // 2. Find the best audio format for transcription
+        // Find the best audio format
         let audioUrl = null;
         let formatInfo = null;
         
-        // Prefer audio-only formats first
-        if (infoData.data.formats && infoData.data.formats.audio && infoData.data.formats.audio.length > 0) {
-            // Get the first audio format (usually best quality)
-            formatInfo = infoData.data.formats.audio[0];
+        // First try to find audio-only formats
+        const audioFormats = zmData.medias.filter(media => 
+            media.type === 'audio' || media.quality?.toLowerCase().includes('audio')
+        );
+        
+        if (audioFormats.length > 0) {
+            formatInfo = audioFormats[0];
             audioUrl = formatInfo.url;
-            console.log(`[${requestId}] Selected audio-only format: ${formatInfo.quality || 'Unknown quality'}`);
-        } 
-        // Fallback to recommended audio
-        else if (infoData.data.recommended && infoData.data.recommended.audio) {
-            formatInfo = infoData.data.recommended.audio;
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] Selected recommended audio format: ${formatInfo.quality || 'Unknown quality'}`);
-        }
-        // Fallback to combined format (will extract audio)
-        else if (infoData.data.recommended && infoData.data.recommended.combined) {
-            formatInfo = infoData.data.recommended.combined;
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] No audio format found, using combined format: ${formatInfo.quality || 'Unknown quality'}`);
-        }
-        // Last resort: try any available format
-        else if (infoData.data.formats && infoData.data.formats.video && infoData.data.formats.video.length > 0) {
-            formatInfo = infoData.data.formats.video[0];
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] No audio format found, using first available video format: ${formatInfo.quality || 'Unknown quality'}`);
+            console.log(`[${requestId}] Found audio format: ${formatInfo.quality || 'Unknown'}`);
+        } else {
+            // Try to find format 18 (360p MP4) first as it's commonly available
+            const format18 = zmData.medias.find(media => media.formatId === '18' && media.url);
+            
+            if (format18) {
+                formatInfo = format18;
+                audioUrl = format18.url;
+                console.log(`[${requestId}] No audio format found, using MP4 format 18 (360p)`);
+            } else {
+                // Last resort: just use the first format with a URL
+                const anyFormat = zmData.medias.find(media => media.url);
+                if (anyFormat) {
+                    formatInfo = anyFormat;
+                    audioUrl = anyFormat.url;
+                    console.log(`[${requestId}] Using fallback format: ${anyFormat.quality || 'Unknown'}`);
+                }
+            }
         }
         
         if (!audioUrl) {
-            throw new Error('לא נמצא פורמט אודיו מתאים לתמלול');
+            throw new Error('No suitable audio/video format found for transcription');
         }
         
-        console.log(`[${requestId}] Audio URL found, now downloading to server using streaming...`);
+        console.log(`[${requestId}] Selected media URL: ${audioUrl.substring(0, 50)}...`);
         
-        // 3. Download the audio file to the server
-        console.log(`[${requestId}] Audio URL found, now downloading to server using streaming...`);
-        
-        // Use our own proxy to avoid CORS issues
-        const proxyUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/proxy?url=${encodeURIComponent(audioUrl)}`;
-        console.log(`[${requestId}] Using proxy URL: ${proxyUrl}`);
-        
-        // Create a unique temporary filename
+        // STEP 2: DOWNLOAD THE AUDIO to our server (this is the critical part)
+        console.log(`[${requestId}] STEP 2: DOWNLOADING AUDIO FILE TO SERVER`);
         const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
-        console.log(`[${requestId}] Will save audio to: ${tempFileName}`);
+        console.log(`[${requestId}] Audio will be saved to: ${tempFileName}`);
         
-        // Use http or https module directly for better streaming control
-        const protocol = proxyUrl.startsWith('https') ? https : http;
-        
-        // Create a file write stream
-        const fileStream = fs.createWriteStream(tempFileName);
-        let downloadSucceeded = false;
-        
-        // Use a Promise to handle the streaming process
-        await new Promise((resolve, reject) => {
-            const request = protocol.get(proxyUrl, (response) => {
-                // Check if response is successful
-                if (response.statusCode !== 200) {
-                    return reject(new Error(`Failed to download audio: Status ${response.statusCode}`));
-                }
+        try {
+            // FORCED DIRECT DOWNLOAD - no streaming, no fetch, just direct file writing
+            const protocol = audioUrl.startsWith('https') ? https : http;
+            
+            // Create a promise for the download
+            await new Promise((resolve, reject) => {
+                const fileStream = fs.createWriteStream(tempFileName);
                 
-                // Log download info
-                console.log(`[${requestId}] Download started. Content-Type: ${response.headers['content-type']}, Length: ${response.headers['content-length'] || 'unknown'}`);
+                console.log(`[${requestId}] Starting direct file download...`);
                 
-                // Track download progress
-                let downloadedBytes = 0;
-                response.on('data', (chunk) => {
-                    downloadedBytes += chunk.length;
-                    if (downloadedBytes % 1000000 === 0) { // Log every ~1MB
-                        console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB so far...`);
+                // Make the request explicitly
+                const request = protocol.get(audioUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0',
+                        'Accept': '*/*'
+                    },
+                    timeout: 30000 // 30 seconds timeout
+                }, (response) => {
+                    // Check status code
+                    if (response.statusCode !== 200) {
+                        fileStream.close();
+                        fs.unlinkSync(tempFileName); 
+                        return reject(new Error(`Download failed with status ${response.statusCode}`));
                     }
+                    
+                    // Track download progress
+                    let downloadedBytes = 0;
+                    
+                    response.on('data', (chunk) => {
+                        downloadedBytes += chunk.length;
+                        if (downloadedBytes % 1000000 < chunk.length) { // Log every ~1MB
+                            console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB so far`);
+                        }
+                    });
+                    
+                    // Pipe response to the file
+                    response.pipe(fileStream);
+                    
+                    // Handle download completion
+                    fileStream.on('finish', () => {
+                        fileStream.close();
+                        
+                        // Verify file exists and has content
+                        const stats = fs.statSync(tempFileName);
+                        console.log(`[${requestId}] DOWNLOAD COMPLETED. File size: ${stats.size} bytes`);
+                        
+                        if (stats.size === 0) {
+                            fs.unlinkSync(tempFileName);
+                            return reject(new Error('Downloaded file is empty'));
+                        }
+                        
+                        resolve(stats.size);
+                    });
+                    
+                    // Handle streaming errors
+                    response.on('error', (err) => {
+                        fileStream.close();
+                        fs.unlinkSync(tempFileName);
+                        reject(err);
+                    });
                 });
                 
-                // Pipe directly to file
-                response.pipe(fileStream);
-                
-                // Handle completion
-                fileStream.on('finish', () => {
+                // Handle request errors
+                request.on('error', (err) => {
                     fileStream.close();
-                    console.log(`[${requestId}] Download complete. Total: ${downloadedBytes} bytes`);
-                    // Check file size to ensure we got data
-                    const stats = fs.statSync(tempFileName);
-                    if (stats.size === 0) {
-                        fs.unlinkSync(tempFileName); // Clean up empty file
-                        reject(new Error('Downloaded file is empty'));
-                    } else {
-                        downloadSucceeded = true;
-                        resolve();
-                    }
-                });
-                
-                // Handle errors during streaming
-                response.on('error', (err) => {
-                    fileStream.close();
-                    fs.unlinkSync(tempFileName); // Clean up
+                    fs.unlinkSync(tempFileName);
                     reject(err);
                 });
+                
+                // Handle timeout
+                request.on('timeout', () => {
+                    request.destroy();
+                    fileStream.close();
+                    fs.unlinkSync(tempFileName);
+                    reject(new Error('Download request timed out'));
+                });
             });
             
-            // Handle request errors
-            request.on('error', (err) => {
-                fileStream.close();
-                fs.unlinkSync(tempFileName); // Clean up
-                reject(err);
-            });
+            // Verify the file one more time
+            const finalStats = fs.statSync(tempFileName);
+            if (finalStats.size === 0) {
+                throw new Error('Downloaded file is empty after verification');
+            }
             
-            // Set timeout
-            request.setTimeout(120000, () => { // 2 minutes
-                request.destroy();
-                fileStream.close();
-                fs.unlinkSync(tempFileName); // Clean up
-                reject(new Error('Download request timed out after 120 seconds'));
-            });
-        });
-        
-        if (!downloadSucceeded) {
-            throw new Error('Failed to download audio file for transcription');
+            console.log(`[${requestId}] Download success! File: ${tempFileName}, Size: ${finalStats.size} bytes`);
+            
+        } catch (downloadError) {
+            console.error(`[${requestId}] CRITICAL ERROR DOWNLOADING AUDIO:`, downloadError);
+            throw new Error(`Failed to download audio: ${downloadError.message}`);
         }
         
-        console.log(`[${requestId}] Audio file saved successfully at: ${tempFileName}`);
+        // STEP 3: Send to ElevenLabs for transcription
+        console.log(`[${requestId}] STEP 3: SENDING TO ELEVENLABS FOR TRANSCRIPTION`);
         
-        // 4. Prepare the form data for ElevenLabs API
         const formData = new FormData();
-        // Use file from disk for more reliable upload
         formData.append('file', fs.createReadStream(tempFileName));
-        formData.append('model_id', 'scribe_v1'); // ElevenLabs model
+        formData.append('model_id', 'scribe_v1');
         formData.append('timestamps_granularity', 'word');
-        formData.append('language', ''); // Auto-detect language
-        
-        // 5. Send to ElevenLabs for transcription
-        console.log(`[${requestId}] Sending audio to ElevenLabs for transcription`);
+        formData.append('language', ''); 
         
         // Try ElevenLabs API with retries
         let transcriptionData;
-        let apiRetries = 2; // Fewer retries for API to avoid excessive costs
-        let apiDelay = 2000; // Start with 2 seconds
+        let apiRetries = 2;
+        let apiDelay = 2000;
         let apiSuccess = false;
         
         for (let attempt = 1; attempt <= apiRetries + 1; attempt++) {
             try {
                 console.log(`[${requestId}] ElevenLabs API attempt ${attempt}/${apiRetries + 1}`);
                 
-                const { response, data } = await sendMultipartFormRequest('https://api.elevenlabs.io/v1/speech-to-text', formData, {
-                    'xi-api-key': ELEVENLABS_API_KEY
-                });
+                const { response, data } = await sendMultipartFormRequest(
+                    'https://api.elevenlabs.io/v1/speech-to-text',
+                    formData,
+                    { 'xi-api-key': ELEVENLABS_API_KEY }
+                );
                 
                 if (response.statusCode !== 200) {
-                    // Log the error in more detail
                     console.error(`[${requestId}] ElevenLabs API error - status: ${response.statusCode}`);
                     const errorText = typeof data === 'string' ? data : JSON.stringify(data);
                     console.error(`[${requestId}] ElevenLabs error response: ${errorText}`);
-                    throw new Error(`ElevenLabs API error: ${response.statusCode} ${response.statusMessage}`);
+                    throw new Error(`ElevenLabs API error: ${response.statusCode}`);
                 }
                 
                 transcriptionData = data;
                 apiSuccess = true;
-                break; // Exit retry loop on success
+                break;
             } catch (apiError) {
                 console.error(`[${requestId}] ElevenLabs API attempt ${attempt} failed:`, apiError);
                 
                 if (attempt < apiRetries + 1) {
                     console.log(`[${requestId}] Waiting ${apiDelay}ms before retry...`);
                     await new Promise(resolve => setTimeout(resolve, apiDelay));
-                    apiDelay *= 2; // Exponential backoff
+                    apiDelay *= 2;
                 } else {
-                    throw new Error(`כל נסיונות התמלול נכשלו: ${apiError.message}`);
+                    throw new Error(`ElevenLabs transcription failed: ${apiError.message}`);
                 }
             }
         }
         
-        if (!apiSuccess || !transcriptionData) {
-            throw new Error('שגיאה בתמלול - לא התקבלו נתונים מ-ElevenLabs');
-        }
-        
-        console.log(`[${requestId}] Transcription successful, converting to requested format: ${format}`);
-        
-        // 6. Delete temporary file
+        // STEP 4: Clean up the temporary file
         try {
             fs.unlinkSync(tempFileName);
-            console.log(`[${requestId}] Removed temporary file ${tempFileName}`);
+            console.log(`[${requestId}] Temporary audio file deleted: ${tempFileName}`);
         } catch (deleteError) {
-            console.warn(`[${requestId}] Could not delete temporary file: ${deleteError.message}`);
+            console.warn(`[${requestId}] Failed to delete temporary file: ${deleteError.message}`);
         }
         
-        // 7. Process the transcription data based on the requested format
+        // STEP 5: Process the transcription data based on requested format
+        console.log(`[${requestId}] STEP 5: Formatting results as ${format}`);
+        
         if (format === 'json') {
             // Return raw JSON data from ElevenLabs
-            res.json({
+            return res.json({
                 success: true,
                 data: {
                     videoId: videoId,
-                    title: infoData.data.title || '',
-                    duration: infoData.data.duration || 0,
+                    title: zmData.title || '',
+                    duration: zmData.duration || 0,
                     transcript: transcriptionData,
                     language: transcriptionData.language || 'unknown'
                 }
@@ -2170,17 +2191,16 @@ app.get('/transcribe', async (req, res) => {
             let counter = 1;
             
             if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
-                // Group words into sentences or smaller chunks
+                // Group words into chunks
                 const chunks = [];
                 let currentChunk = [];
                 let currentDuration = 0;
-                const MAX_CHUNK_DURATION = 5; // Max 5 seconds per subtitle
+                const MAX_CHUNK_DURATION = 5;
                 
                 for (const word of transcriptionData.words) {
                     currentChunk.push(word);
                     currentDuration = word.end - (currentChunk[0]?.start || 0);
                     
-                    // If chunk is long enough or we hit punctuation, create a new chunk
                     if (currentDuration >= MAX_CHUNK_DURATION || 
                         word.text.match(/[.!?]$/) || 
                         currentChunk.length >= 15) {
@@ -2191,7 +2211,6 @@ app.get('/transcribe', async (req, res) => {
                     }
                 }
                 
-                // Add any remaining words
                 if (currentChunk.length > 0) {
                     chunks.push(currentChunk);
                 }
@@ -2206,7 +2225,7 @@ app.get('/transcribe', async (req, res) => {
                         const endSrt = formatSrtTime(endTime);
                         
                         const text = chunk.map(w => w.text).join(' ')
-                            .replace(/ ([.,!?:;])/g, '$1'); // Fix spacing before punctuation
+                            .replace(/ ([.,!?:;])/g, '$1');
                         
                         srtContent += `${counter}\n`;
                         srtContent += `${startSrt} --> ${endSrt}\n`;
@@ -2217,36 +2236,31 @@ app.get('/transcribe', async (req, res) => {
                 }
             }
             
-            // Set content type to text and send SRT format
             res.setHeader('Content-Type', 'text/plain');
             res.setHeader('Content-Disposition', `attachment; filename="${videoId}.srt"`);
-            res.send(srtContent);
+            return res.send(srtContent);
         } else if (format === 'txt') {
-            // Convert to plain text format - just the text
+            // Convert to plain text format
             let plainText = "";
             
             if (transcriptionData.text) {
-                // If ElevenLabs provides full text, use it
                 plainText = transcriptionData.text;
             } else if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
-                // Otherwise combine all words
                 plainText = transcriptionData.words.map(w => w.text).join(' ')
-                    .replace(/ ([.,!?:;])/g, '$1'); // Fix spacing before punctuation
+                    .replace(/ ([.,!?:;])/g, '$1');
             }
             
-            // Set content type to text and send TXT format
             res.setHeader('Content-Type', 'text/plain');
             res.setHeader('Content-Disposition', `attachment; filename="${videoId}.txt"`);
-            res.send(plainText);
+            return res.send(plainText);
         } else {
             throw new Error(`פורמט לא נתמך: ${format}. יש להשתמש ב-json, srt, או txt.`);
         }
         
     } catch (error) {
-        console.error(`[${requestId}] Transcription error:`, error);
+        console.error(`[${requestId}] TRANSCRIPTION ERROR:`, error);
         
-        // Return user-friendly error message
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             error: `שגיאה בתמלול: ${error.message}`,
             requestId: requestId
@@ -2417,238 +2431,3 @@ function formatSrtTime(seconds) {
     
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
 }
-
-// Transcribe endpoint with proper audio download
-app.get('/transcribe', async (req, res) => {
-    const videoId = req.query.id;
-    const format = req.query.format || 'json'; // 'json', 'srt', or 'txt'
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-    
-    if (!videoId) {
-        return res.status(400).json({ 
-            success: false,
-            error: 'חסר פרמטר חובה: id (מזהה סרטון)',
-            example: '/transcribe?id=YOUTUBE_VIDEO_ID&format=json|srt|txt'
-        });
-    }
-    
-    console.log(`[${requestId}] Starting transcription for video ID: ${videoId}, format: ${format}`);
-    
-    try {
-        // 1. Get video info from the internal /youtube-info endpoint
-        const infoUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/youtube-info?id=${videoId}`;
-        console.log(`[${requestId}] Getting video info from: ${infoUrl}`);
-        
-        const infoResponse = await fetch(infoUrl);
-        if (!infoResponse.ok) {
-            throw new Error(`שגיאה בקבלת מידע על הסרטון: ${infoResponse.status}`);
-        }
-        
-        const infoData = await infoResponse.json();
-        if (!infoData.success || !infoData.data) {
-            throw new Error('תגובה לא תקפה מנקודת הקצה של מידע הסרטון');
-        }
-        
-        console.log(`[${requestId}] Successfully got video info. Looking for best audio format...`);
-        
-        // 2. Find the best audio format
-        let audioUrl = null;
-        let formatInfo = null;
-        
-        // First try to find audio-only formats
-        if (infoData.data.formats && infoData.data.formats.audio && infoData.data.formats.audio.length > 0) {
-            formatInfo = infoData.data.formats.audio[0];
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] Found audio format: ${formatInfo.quality || 'Unknown'}`);
-        } else if (infoData.data.recommended && infoData.data.recommended.audio) {
-            formatInfo = infoData.data.recommended.audio;
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] Using recommended audio format`);
-        } else if (infoData.data.recommended && infoData.data.recommended.combined) {
-            formatInfo = infoData.data.recommended.combined;
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] No audio format found, using combined format`);
-        } else if (infoData.data.formats && infoData.data.formats.video && infoData.data.formats.video.length > 0) {
-            // Last resort: try any video format
-            formatInfo = infoData.data.formats.video[0];
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] Using fallback video format: ${formatInfo.quality || 'Unknown'}`);
-        }
-        
-        if (!audioUrl) {
-            throw new Error('לא נמצא פורמט אודיו מתאים לתמלול');
-        }
-        
-        // 3. Download the audio file to local temp directory
-        console.log(`[${requestId}] Found media URL, downloading now...`);
-        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
-        
-        try {
-            // Download the file using our helper function
-            await downloadFile(audioUrl, tempFileName, requestId);
-            
-            // Check that the file exists and has content
-            const stats = fs.statSync(tempFileName);
-            console.log(`[${requestId}] Audio file saved to ${tempFileName}, size: ${stats.size} bytes`);
-            
-            if (stats.size === 0) {
-                throw new Error('Downloaded audio file is empty');
-            }
-        } catch (downloadError) {
-            console.error(`[${requestId}] Error downloading audio:`, downloadError);
-            throw new Error(`Failed to download audio: ${downloadError.message}`);
-        }
-        
-        // 4. Prepare and send to ElevenLabs for transcription
-        console.log(`[${requestId}] Preparing to send audio to ElevenLabs for transcription...`);
-        
-        const formData = new FormData();
-        formData.append('file', fs.createReadStream(tempFileName));
-        formData.append('model_id', 'scribe_v1');
-        formData.append('timestamps_granularity', 'word');
-        formData.append('language', ''); // Auto-detect language
-        
-        // Try ElevenLabs API with retries
-        let transcriptionData;
-        let apiRetries = 2;
-        let apiDelay = 2000;
-        let apiSuccess = false;
-        
-        for (let attempt = 1; attempt <= apiRetries + 1; attempt++) {
-            try {
-                console.log(`[${requestId}] ElevenLabs API attempt ${attempt}/${apiRetries + 1}`);
-                
-                const { response, data } = await sendMultipartFormRequest(
-                    'https://api.elevenlabs.io/v1/speech-to-text',
-                    formData,
-                    { 'xi-api-key': ELEVENLABS_API_KEY }
-                );
-                
-                if (response.statusCode !== 200) {
-                    console.error(`[${requestId}] ElevenLabs API error - status: ${response.statusCode}`);
-                    const errorText = typeof data === 'string' ? data : JSON.stringify(data);
-                    console.error(`[${requestId}] ElevenLabs error response: ${errorText}`);
-                    throw new Error(`ElevenLabs API error: ${response.statusCode}`);
-                }
-                
-                transcriptionData = data;
-                apiSuccess = true;
-                break;
-            } catch (apiError) {
-                console.error(`[${requestId}] ElevenLabs API attempt ${attempt} failed:`, apiError);
-                
-                if (attempt < apiRetries + 1) {
-                    console.log(`[${requestId}] Waiting ${apiDelay}ms before retry...`);
-                    await new Promise(resolve => setTimeout(resolve, apiDelay));
-                    apiDelay *= 2;
-                } else {
-                    throw new Error(`ElevenLabs transcription failed: ${apiError.message}`);
-                }
-            }
-        }
-        
-        // 5. Clean up the temporary file
-        try {
-            fs.unlinkSync(tempFileName);
-            console.log(`[${requestId}] Temporary audio file deleted: ${tempFileName}`);
-        } catch (deleteError) {
-            console.warn(`[${requestId}] Failed to delete temporary file: ${deleteError.message}`);
-        }
-        
-        // 6. Process the transcription data based on requested format
-        console.log(`[${requestId}] Processing transcription results to ${format} format...`);
-        
-        if (format === 'json') {
-            // Return raw JSON data from ElevenLabs
-            return res.json({
-                success: true,
-                data: {
-                    videoId: videoId,
-                    title: infoData.data.title || '',
-                    duration: infoData.data.duration || 0,
-                    transcript: transcriptionData,
-                    language: transcriptionData.language || 'unknown'
-                }
-            });
-        } else if (format === 'srt') {
-            // Convert to SRT format
-            let srtContent = "";
-            let counter = 1;
-            
-            if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
-                // Group words into chunks
-                const chunks = [];
-                let currentChunk = [];
-                let currentDuration = 0;
-                const MAX_CHUNK_DURATION = 5;
-                
-                for (const word of transcriptionData.words) {
-                    currentChunk.push(word);
-                    currentDuration = word.end - (currentChunk[0]?.start || 0);
-                    
-                    if (currentDuration >= MAX_CHUNK_DURATION || 
-                        word.text.match(/[.!?]$/) || 
-                        currentChunk.length >= 15) {
-                        
-                        chunks.push([...currentChunk]);
-                        currentChunk = [];
-                        currentDuration = 0;
-                    }
-                }
-                
-                if (currentChunk.length > 0) {
-                    chunks.push(currentChunk);
-                }
-                
-                // Convert chunks to SRT
-                for (const chunk of chunks) {
-                    if (chunk.length > 0) {
-                        const startTime = chunk[0].start;
-                        const endTime = chunk[chunk.length - 1].end;
-                        
-                        const startSrt = formatSrtTime(startTime);
-                        const endSrt = formatSrtTime(endTime);
-                        
-                        const text = chunk.map(w => w.text).join(' ')
-                            .replace(/ ([.,!?:;])/g, '$1');
-                        
-                        srtContent += `${counter}\n`;
-                        srtContent += `${startSrt} --> ${endSrt}\n`;
-                        srtContent += `${text}\n\n`;
-                        
-                        counter++;
-                    }
-                }
-            }
-            
-            res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.srt"`);
-            return res.send(srtContent);
-        } else if (format === 'txt') {
-            // Convert to plain text format
-            let plainText = "";
-            
-            if (transcriptionData.text) {
-                plainText = transcriptionData.text;
-            } else if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
-                plainText = transcriptionData.words.map(w => w.text).join(' ')
-                    .replace(/ ([.,!?:;])/g, '$1');
-            }
-            
-            res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.txt"`);
-            return res.send(plainText);
-        } else {
-            throw new Error(`פורמט לא נתמך: ${format}. יש להשתמש ב-json, srt, או txt.`);
-        }
-        
-    } catch (error) {
-        console.error(`[${requestId}] Transcription error:`, error);
-        
-        return res.status(500).json({
-            success: false,
-            error: `שגיאה בתמלול: ${error.message}`,
-            requestId: requestId
-        });
-    }
-});
