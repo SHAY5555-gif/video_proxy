@@ -2319,3 +2319,336 @@ async function sendMultipartFormRequest(url, formData, headers = {}) {
         formData.pipe(req);
     });
 }
+
+// Helper function for downloading files using streams
+async function downloadFile(url, targetPath, requestId) {
+    console.log(`[${requestId}] Downloading file from URL: ${url.substring(0, 100)}...`);
+    
+    return new Promise((resolve, reject) => {
+        // Create write stream for the target file
+        const fileStream = fs.createWriteStream(targetPath);
+        
+        // Parse URL
+        const parsedUrl = new URL(url);
+        const protocol = parsedUrl.protocol === 'https:' ? https : http;
+        
+        // Request options
+        const options = {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Connection': 'keep-alive'
+            },
+            timeout: 60000 // 60 seconds timeout
+        };
+        
+        // Make the request
+        const req = protocol.get(url, options, (response) => {
+            // Check if response is successful
+            if (response.statusCode !== 200) {
+                fileStream.close();
+                fs.unlinkSync(targetPath); // Clean up the file
+                return reject(new Error(`Download failed with status code ${response.statusCode}`));
+            }
+            
+            // Track download progress
+            let downloadedBytes = 0;
+            let totalBytes = parseInt(response.headers['content-length'] || '0');
+            
+            response.on('data', (chunk) => {
+                downloadedBytes += chunk.length;
+                // Log progress every ~1MB or 10% for larger files
+                if (downloadedBytes % 1000000 < chunk.length || 
+                    (totalBytes > 0 && downloadedBytes / totalBytes >= 0.1)) {
+                    console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB ${totalBytes ? `(${Math.round(downloadedBytes/totalBytes*100)}%)` : ''}`);
+                }
+            });
+            
+            // Pipe response to file
+            response.pipe(fileStream);
+            
+            // Handle download completion
+            fileStream.on('finish', () => {
+                fileStream.close();
+                
+                // Verify file was downloaded successfully
+                const stats = fs.statSync(targetPath);
+                if (stats.size === 0) {
+                    fs.unlinkSync(targetPath); // Delete empty file
+                    return reject(new Error('Downloaded file is empty'));
+                }
+                
+                console.log(`[${requestId}] Download completed. File size: ${stats.size} bytes`);
+                resolve(stats.size);
+            });
+            
+            // Handle errors during streaming
+            fileStream.on('error', (err) => {
+                fileStream.close();
+                fs.unlinkSync(targetPath); // Clean up the file
+                reject(err);
+            });
+        });
+        
+        // Handle request errors
+        req.on('error', (err) => {
+            fileStream.close();
+            fs.unlinkSync(targetPath); // Clean up the file
+            reject(err);
+        });
+        
+        // Handle timeout
+        req.on('timeout', () => {
+            req.destroy();
+            fileStream.close();
+            fs.unlinkSync(targetPath); // Clean up the file
+            reject(new Error('Download request timed out'));
+        });
+    });
+}
+
+// Helper function to format time for SRT files
+function formatSrtTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const millis = Math.floor((seconds % 1) * 1000);
+    
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+}
+
+// Transcribe endpoint with proper audio download
+app.get('/transcribe', async (req, res) => {
+    const videoId = req.query.id;
+    const format = req.query.format || 'json'; // 'json', 'srt', or 'txt'
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    
+    if (!videoId) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'חסר פרמטר חובה: id (מזהה סרטון)',
+            example: '/transcribe?id=YOUTUBE_VIDEO_ID&format=json|srt|txt'
+        });
+    }
+    
+    console.log(`[${requestId}] Starting transcription for video ID: ${videoId}, format: ${format}`);
+    
+    try {
+        // 1. Get video info from the internal /youtube-info endpoint
+        const infoUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/youtube-info?id=${videoId}`;
+        console.log(`[${requestId}] Getting video info from: ${infoUrl}`);
+        
+        const infoResponse = await fetch(infoUrl);
+        if (!infoResponse.ok) {
+            throw new Error(`שגיאה בקבלת מידע על הסרטון: ${infoResponse.status}`);
+        }
+        
+        const infoData = await infoResponse.json();
+        if (!infoData.success || !infoData.data) {
+            throw new Error('תגובה לא תקפה מנקודת הקצה של מידע הסרטון');
+        }
+        
+        console.log(`[${requestId}] Successfully got video info. Looking for best audio format...`);
+        
+        // 2. Find the best audio format
+        let audioUrl = null;
+        let formatInfo = null;
+        
+        // First try to find audio-only formats
+        if (infoData.data.formats && infoData.data.formats.audio && infoData.data.formats.audio.length > 0) {
+            formatInfo = infoData.data.formats.audio[0];
+            audioUrl = formatInfo.url;
+            console.log(`[${requestId}] Found audio format: ${formatInfo.quality || 'Unknown'}`);
+        } else if (infoData.data.recommended && infoData.data.recommended.audio) {
+            formatInfo = infoData.data.recommended.audio;
+            audioUrl = formatInfo.url;
+            console.log(`[${requestId}] Using recommended audio format`);
+        } else if (infoData.data.recommended && infoData.data.recommended.combined) {
+            formatInfo = infoData.data.recommended.combined;
+            audioUrl = formatInfo.url;
+            console.log(`[${requestId}] No audio format found, using combined format`);
+        } else if (infoData.data.formats && infoData.data.formats.video && infoData.data.formats.video.length > 0) {
+            // Last resort: try any video format
+            formatInfo = infoData.data.formats.video[0];
+            audioUrl = formatInfo.url;
+            console.log(`[${requestId}] Using fallback video format: ${formatInfo.quality || 'Unknown'}`);
+        }
+        
+        if (!audioUrl) {
+            throw new Error('לא נמצא פורמט אודיו מתאים לתמלול');
+        }
+        
+        // 3. Download the audio file to local temp directory
+        console.log(`[${requestId}] Found media URL, downloading now...`);
+        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
+        
+        try {
+            // Download the file using our helper function
+            await downloadFile(audioUrl, tempFileName, requestId);
+            
+            // Check that the file exists and has content
+            const stats = fs.statSync(tempFileName);
+            console.log(`[${requestId}] Audio file saved to ${tempFileName}, size: ${stats.size} bytes`);
+            
+            if (stats.size === 0) {
+                throw new Error('Downloaded audio file is empty');
+            }
+        } catch (downloadError) {
+            console.error(`[${requestId}] Error downloading audio:`, downloadError);
+            throw new Error(`Failed to download audio: ${downloadError.message}`);
+        }
+        
+        // 4. Prepare and send to ElevenLabs for transcription
+        console.log(`[${requestId}] Preparing to send audio to ElevenLabs for transcription...`);
+        
+        const formData = new FormData();
+        formData.append('file', fs.createReadStream(tempFileName));
+        formData.append('model_id', 'scribe_v1');
+        formData.append('timestamps_granularity', 'word');
+        formData.append('language', ''); // Auto-detect language
+        
+        // Try ElevenLabs API with retries
+        let transcriptionData;
+        let apiRetries = 2;
+        let apiDelay = 2000;
+        let apiSuccess = false;
+        
+        for (let attempt = 1; attempt <= apiRetries + 1; attempt++) {
+            try {
+                console.log(`[${requestId}] ElevenLabs API attempt ${attempt}/${apiRetries + 1}`);
+                
+                const { response, data } = await sendMultipartFormRequest(
+                    'https://api.elevenlabs.io/v1/speech-to-text',
+                    formData,
+                    { 'xi-api-key': ELEVENLABS_API_KEY }
+                );
+                
+                if (response.statusCode !== 200) {
+                    console.error(`[${requestId}] ElevenLabs API error - status: ${response.statusCode}`);
+                    const errorText = typeof data === 'string' ? data : JSON.stringify(data);
+                    console.error(`[${requestId}] ElevenLabs error response: ${errorText}`);
+                    throw new Error(`ElevenLabs API error: ${response.statusCode}`);
+                }
+                
+                transcriptionData = data;
+                apiSuccess = true;
+                break;
+            } catch (apiError) {
+                console.error(`[${requestId}] ElevenLabs API attempt ${attempt} failed:`, apiError);
+                
+                if (attempt < apiRetries + 1) {
+                    console.log(`[${requestId}] Waiting ${apiDelay}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, apiDelay));
+                    apiDelay *= 2;
+                } else {
+                    throw new Error(`ElevenLabs transcription failed: ${apiError.message}`);
+                }
+            }
+        }
+        
+        // 5. Clean up the temporary file
+        try {
+            fs.unlinkSync(tempFileName);
+            console.log(`[${requestId}] Temporary audio file deleted: ${tempFileName}`);
+        } catch (deleteError) {
+            console.warn(`[${requestId}] Failed to delete temporary file: ${deleteError.message}`);
+        }
+        
+        // 6. Process the transcription data based on requested format
+        console.log(`[${requestId}] Processing transcription results to ${format} format...`);
+        
+        if (format === 'json') {
+            // Return raw JSON data from ElevenLabs
+            return res.json({
+                success: true,
+                data: {
+                    videoId: videoId,
+                    title: infoData.data.title || '',
+                    duration: infoData.data.duration || 0,
+                    transcript: transcriptionData,
+                    language: transcriptionData.language || 'unknown'
+                }
+            });
+        } else if (format === 'srt') {
+            // Convert to SRT format
+            let srtContent = "";
+            let counter = 1;
+            
+            if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
+                // Group words into chunks
+                const chunks = [];
+                let currentChunk = [];
+                let currentDuration = 0;
+                const MAX_CHUNK_DURATION = 5;
+                
+                for (const word of transcriptionData.words) {
+                    currentChunk.push(word);
+                    currentDuration = word.end - (currentChunk[0]?.start || 0);
+                    
+                    if (currentDuration >= MAX_CHUNK_DURATION || 
+                        word.text.match(/[.!?]$/) || 
+                        currentChunk.length >= 15) {
+                        
+                        chunks.push([...currentChunk]);
+                        currentChunk = [];
+                        currentDuration = 0;
+                    }
+                }
+                
+                if (currentChunk.length > 0) {
+                    chunks.push(currentChunk);
+                }
+                
+                // Convert chunks to SRT
+                for (const chunk of chunks) {
+                    if (chunk.length > 0) {
+                        const startTime = chunk[0].start;
+                        const endTime = chunk[chunk.length - 1].end;
+                        
+                        const startSrt = formatSrtTime(startTime);
+                        const endSrt = formatSrtTime(endTime);
+                        
+                        const text = chunk.map(w => w.text).join(' ')
+                            .replace(/ ([.,!?:;])/g, '$1');
+                        
+                        srtContent += `${counter}\n`;
+                        srtContent += `${startSrt} --> ${endSrt}\n`;
+                        srtContent += `${text}\n\n`;
+                        
+                        counter++;
+                    }
+                }
+            }
+            
+            res.setHeader('Content-Type', 'text/plain');
+            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.srt"`);
+            return res.send(srtContent);
+        } else if (format === 'txt') {
+            // Convert to plain text format
+            let plainText = "";
+            
+            if (transcriptionData.text) {
+                plainText = transcriptionData.text;
+            } else if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
+                plainText = transcriptionData.words.map(w => w.text).join(' ')
+                    .replace(/ ([.,!?:;])/g, '$1');
+            }
+            
+            res.setHeader('Content-Type', 'text/plain');
+            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.txt"`);
+            return res.send(plainText);
+        } else {
+            throw new Error(`פורמט לא נתמך: ${format}. יש להשתמש ב-json, srt, או txt.`);
+        }
+        
+    } catch (error) {
+        console.error(`[${requestId}] Transcription error:`, error);
+        
+        return res.status(500).json({
+            success: false,
+            error: `שגיאה בתמלול: ${error.message}`,
+            requestId: requestId
+        });
+    }
+});
