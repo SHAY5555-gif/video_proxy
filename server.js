@@ -313,6 +313,37 @@ app.get('/proxy', async (req, res) => {
             ? await fetchFromYouTube(videoUrl, fetchOptions)
             : await fetchWithRetries(videoUrl, fetchOptions);
 
+        // Check for redirects (301, 302, 307, 308)
+        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+            const redirectUrl = response.headers.get('location');
+            console.log(`[${requestId}] Server returned redirect (${response.status}) to: ${redirectUrl}`);
+            
+            // Handle relative URLs
+            let fullRedirectUrl = redirectUrl;
+            if (!redirectUrl.startsWith('http')) {
+                const originalUrl = new URL(videoUrl);
+                fullRedirectUrl = new URL(redirectUrl, `${originalUrl.protocol}//${originalUrl.host}`).toString();
+                console.log(`[${requestId}] Converted relative redirect to absolute URL: ${fullRedirectUrl}`);
+            }
+            
+            // Check if we should follow the redirect
+            if (req.query.follow_redirects !== 'false') {
+                console.log(`[${requestId}] Following redirect to: ${fullRedirectUrl}`);
+                
+                // Create a proxy URL for the redirect to avoid CORS issues
+                const newProxyUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/proxy?url=${encodeURIComponent(fullRedirectUrl)}`;
+                
+                // Redirect the client
+                return res.redirect(307, newProxyUrl);
+            } else {
+                console.log(`[${requestId}] Not following redirect due to follow_redirects=false`);
+                // Just pass through the redirect response
+                res.status(response.status);
+                res.setHeader('Location', fullRedirectUrl);
+                return res.end();
+            }
+        }
+
         // Log response details
         console.log(`[${requestId}] Response status: ${response.status}`);
         
@@ -2011,7 +2042,102 @@ app.get('/transcribe', async (req, res) => {
                     },
                     timeout: 60000 // 60 seconds timeout
                 }, (response) => {
-                    // Check status code
+                    // Check if we got a redirect (301, 302, 307, 308)
+                    if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                        console.log(`[${requestId}] Received redirect (${response.statusCode}) to: ${response.headers.location}`);
+                        
+                        // Close the current request and file stream
+                        request.destroy();
+                        fileStream.close();
+                        
+                        // Handle the redirect by creating a new request to the new location
+                        let redirectUrl = response.headers.location;
+                        
+                        // If redirect URL is relative, make it absolute
+                        if (!redirectUrl.startsWith('http')) {
+                            const baseUrl = new URL(proxyUrl);
+                            redirectUrl = new URL(redirectUrl, `${baseUrl.protocol}//${baseUrl.host}`).toString();
+                        }
+                        
+                        console.log(`[${requestId}] Following redirect to: ${redirectUrl}`);
+                        
+                        // Create a new request to the redirect location
+                        const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
+                        const redirectRequest = redirectProtocol.get(redirectUrl, {
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0',
+                                'Accept': '*/*',
+                                'Origin': 'https://www.youtube.com',
+                                'Referer': 'https://www.youtube.com/'
+                            },
+                            timeout: 60000
+                        }, (redirectResponse) => {
+                            // Check if the redirect response is successful
+                            if (redirectResponse.statusCode !== 200) {
+                                fileStream.close();
+                                fs.unlinkSync(tempFileName);
+                                return reject(new Error(`Redirect download failed with status ${redirectResponse.statusCode}`));
+                            }
+                            
+                            // Set up a new write stream
+                            const newFileStream = fs.createWriteStream(tempFileName);
+                            
+                            // Track download progress
+                            let downloadedBytes = 0;
+                            
+                            redirectResponse.on('data', (chunk) => {
+                                downloadedBytes += chunk.length;
+                                if (downloadedBytes % 1000000 < chunk.length) { // Log every ~1MB
+                                    console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB so far`);
+                                }
+                            });
+                            
+                            // Pipe redirect response to the file
+                            redirectResponse.pipe(newFileStream);
+                            
+                            // Handle download completion
+                            newFileStream.on('finish', () => {
+                                newFileStream.close();
+                                
+                                // Verify file exists and has content
+                                const stats = fs.statSync(tempFileName);
+                                console.log(`[${requestId}] DOWNLOAD COMPLETED (after redirect). File size: ${stats.size} bytes`);
+                                
+                                if (stats.size === 0) {
+                                    fs.unlinkSync(tempFileName);
+                                    return reject(new Error('Downloaded file is empty'));
+                                }
+                                
+                                resolve(stats.size);
+                            });
+                            
+                            // Handle streaming errors
+                            redirectResponse.on('error', (err) => {
+                                newFileStream.close();
+                                fs.unlinkSync(tempFileName);
+                                reject(err);
+                            });
+                        });
+                        
+                        // Handle request errors
+                        redirectRequest.on('error', (err) => {
+                            fileStream.close();
+                            fs.unlinkSync(tempFileName);
+                            reject(err);
+                        });
+                        
+                        // Handle timeout
+                        redirectRequest.on('timeout', () => {
+                            redirectRequest.destroy();
+                            fileStream.close();
+                            fs.unlinkSync(tempFileName);
+                            reject(new Error('Redirect download request timed out'));
+                        });
+                        
+                        return; // Exit this callback as we're handling the redirect
+                    }
+                
+                    // For non-redirect responses, continue with normal flow
                     if (response.statusCode !== 200) {
                         fileStream.close();
                         fs.unlinkSync(tempFileName); 
@@ -2329,6 +2455,32 @@ async function downloadFile(url, targetPath, requestId) {
         
         // Make the request
         const req = protocol.get(url, options, (response) => {
+            // Check if we got a redirect (301, 302, 307, 308)
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                console.log(`[${requestId}] Received redirect (${response.statusCode}) to: ${response.headers.location}`);
+                
+                // Close the current request and file stream
+                req.destroy();
+                fileStream.close();
+                
+                // Handle the redirect by creating a new request to the new location
+                let redirectUrl = response.headers.location;
+                
+                // If redirect URL is relative, make it absolute
+                if (!redirectUrl.startsWith('http')) {
+                    redirectUrl = new URL(redirectUrl, `${parsedUrl.protocol}//${parsedUrl.host}`).toString();
+                }
+                
+                console.log(`[${requestId}] Following redirect to: ${redirectUrl}`);
+                
+                // Recursively call downloadFile with the new URL
+                downloadFile(redirectUrl, targetPath, requestId)
+                    .then(resolve)
+                    .catch(reject);
+                
+                return; // Exit this callback as we're handling the redirect
+            }
+            
             // Check if response is successful
             if (response.statusCode !== 200) {
                 fileStream.close();
