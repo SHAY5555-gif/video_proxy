@@ -976,83 +976,136 @@ app.get('/download', async (req, res) => {
                 return; // End the request here, user will be redirected by the HTML page
             }
 
-            // Create a request to the download URL
-            const parsedUrl = new URL(downloadUrl);
-            const protocol = parsedUrl.protocol === 'https:' ? https : http;
+            // Instead of using our proxy endpoint, download the file directly and save it temporarily
+            console.log(`[${requestId}] Starting direct download of file: ${downloadUrl}`);
 
-            // Make the request
-            const downloadRequest = protocol.get(downloadUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Accept': '*/*',
-                    'Accept-Encoding': 'identity',
-                    'Connection': 'keep-alive',
-                    'Referer': 'https://www.youtube.com/'
-                }
-            }, (downloadResponse) => {
-                // Handle redirects
-                if (downloadResponse.statusCode === 301 || downloadResponse.statusCode === 302) {
-                    const redirectUrl = downloadResponse.headers.location;
-                    if (!redirectUrl) {
-                        return res.status(500).send('Redirect without location header');
+            // Create a temporary file path
+            const tempDir = path.join(os.tmpdir(), 'youtube-downloads');
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+
+            const tempFilePath = path.join(tempDir, `${videoId}_${Date.now()}.${format === 'audio' ? 'mp3' : 'mp4'}`);
+            console.log(`[${requestId}] Temporary file path: ${tempFilePath}`);
+
+            try {
+                // Create a write stream for the temporary file
+                const fileStream = fs.createWriteStream(tempFilePath);
+
+                // Create a request to the download URL
+                const parsedUrl = new URL(downloadUrl);
+                const protocol = parsedUrl.protocol === 'https:' ? https : http;
+
+                // Make the request
+                const downloadRequest = protocol.get(downloadUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept': '*/*',
+                        'Accept-Encoding': 'identity',
+                        'Connection': 'keep-alive',
+                        'Referer': 'https://www.youtube.com/'
+                    }
+                }, (downloadResponse) => {
+                    // Handle redirects
+                    if (downloadResponse.statusCode === 301 || downloadResponse.statusCode === 302) {
+                        const redirectUrl = downloadResponse.headers.location;
+                        if (!redirectUrl) {
+                            fileStream.close();
+                            return res.status(500).send('Redirect without location header');
+                        }
+
+                        console.log(`[${requestId}] Following redirect to: ${redirectUrl}`);
+                        fileStream.close();
+
+                        // Try again with the new URL
+                        const newDownloadUrl = new URL(redirectUrl, downloadUrl).toString();
+                        http.get(newDownloadUrl, (redirectResponse) => {
+                            redirectResponse.pipe(fileStream);
+                        }).on('error', (err) => {
+                            fileStream.close();
+                            console.error(`[${requestId}] Error following redirect:`, err);
+                            res.status(500).send(`Error following redirect: ${err.message}`);
+                        });
+                        return;
                     }
 
-                    console.log(`[${requestId}] Following redirect to: ${redirectUrl}`);
+                    // Check if the response is successful
+                    if (downloadResponse.statusCode !== 200) {
+                        fileStream.close();
+                        return res.status(downloadResponse.statusCode).send(`Error downloading file: ${downloadResponse.statusCode} ${downloadResponse.statusMessage}`);
+                    }
 
-                    // Recursively call our download endpoint with the new URL
-                    // This is a simplified approach - in production you'd want to handle this more robustly
-                    return http.get(`http://${req.headers.host}/proxy?url=${encodeURIComponent(redirectUrl)}`, (proxyResponse) => {
-                        proxyResponse.pipe(res);
-                    }).on('error', (err) => {
-                        console.error(`[${requestId}] Error following redirect:`, err);
-                        res.status(500).send(`Error following redirect: ${err.message}`);
+                    // Pipe the download response to the file
+                    downloadResponse.pipe(fileStream);
+
+                    // Handle download completion
+                    fileStream.on('finish', () => {
+                        fileStream.close();
+                        console.log(`[${requestId}] Download to temporary file completed`);
+
+                        // Now send the file to the client
+                        const stat = fs.statSync(tempFilePath);
+                        const fileSize = stat.size;
+
+                        // Set appropriate headers for file download
+                        res.setHeader('Content-Length', fileSize);
+                        res.setHeader('Content-Type', format === 'audio' ? 'audio/mpeg' : 'video/mp4');
+                        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+
+                        // Create a read stream from the file and pipe it to the response
+                        const readStream = fs.createReadStream(tempFilePath);
+                        readStream.pipe(res);
+
+                        // When the response is finished, delete the temporary file
+                        res.on('finish', () => {
+                            console.log(`[${requestId}] File sent to client, cleaning up temporary file`);
+                            fs.unlink(tempFilePath, (err) => {
+                                if (err) {
+                                    console.error(`[${requestId}] Error deleting temporary file:`, err);
+                                }
+                            });
+                        });
                     });
-                }
 
-                // Check if the response is successful
-                if (downloadResponse.statusCode !== 200) {
-                    return res.status(downloadResponse.statusCode).send(`Error downloading file: ${downloadResponse.statusCode} ${downloadResponse.statusMessage}`);
-                }
-
-                // Copy content type and other relevant headers
-                if (downloadResponse.headers['content-type']) {
-                    res.setHeader('Content-Type', downloadResponse.headers['content-type']);
-                }
-
-                if (downloadResponse.headers['content-length']) {
-                    res.setHeader('Content-Length', downloadResponse.headers['content-length']);
-                }
-
-                // Pipe the download response directly to our response
-                downloadResponse.pipe(res);
-
-                // Handle download completion
-                downloadResponse.on('end', () => {
-                    console.log(`[${requestId}] Download completed and sent to client`);
+                    // Handle errors during file writing
+                    fileStream.on('error', (err) => {
+                        fileStream.close();
+                        console.error(`[${requestId}] Error writing to temporary file:`, err);
+                        if (!res.headersSent) {
+                            res.status(500).send(`Error saving file: ${err.message}`);
+                        } else {
+                            res.end();
+                        }
+                    });
                 });
-            });
 
-            // Handle request errors
-            downloadRequest.on('error', (err) => {
-                console.error(`[${requestId}] Error during download request:`, err);
-                // Only send error if headers haven't been sent yet
-                if (!res.headersSent) {
-                    res.status(500).send(`Error downloading file: ${err.message}`);
-                } else {
-                    res.end();
-                }
-            });
+                // Handle request errors
+                downloadRequest.on('error', (err) => {
+                    fileStream.close();
+                    console.error(`[${requestId}] Error during download request:`, err);
+                    if (!res.headersSent) {
+                        res.status(500).send(`Error downloading file: ${err.message}`);
+                    } else {
+                        res.end();
+                    }
+                });
 
-            // Set a timeout for the request
-            downloadRequest.setTimeout(60000, () => {
-                downloadRequest.destroy();
-                // Only send error if headers haven't been sent yet
-                if (!res.headersSent) {
-                    res.status(504).send('Download request timed out');
-                } else {
-                    res.end();
-                }
-            });
+                // Set a timeout for the request
+                downloadRequest.setTimeout(60000, () => {
+                    downloadRequest.destroy();
+                    fileStream.close();
+                    if (!res.headersSent) {
+                        res.status(504).send('Download request timed out');
+                    } else {
+                        res.end();
+                    }
+                });
+            } catch (fileError) {
+                console.error(`[${requestId}] Error setting up file streams:`, fileError);
+                res.status(500).send(`Error setting up file streams: ${fileError.message}`);
+            }
+
+            // Note: Error handling is included in the try-catch block
         } catch (downloadError) {
             console.error(`[${requestId}] Error setting up download:`, downloadError);
             res.status(500).send(`Error setting up download: ${downloadError.message}`);
