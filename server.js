@@ -560,485 +560,82 @@ app.get('/proxy', async (req, res) => {
                 solution: 'Try refreshing the page to get a fresh URL or try a different video'
             });
         }
-    }
+    } // This closing brace likely belongs to the /proxy endpoint's catch block
 });
 
-// Add YouTube info API integration with ZM.io.vn
-app.get('/youtube-info', async (req, res) => {
-    const videoId = req.query.id;
-    const videoUrl = req.query.url;
-
-    // We need either video ID or full URL
-    if (!videoId && !videoUrl) {
-        return res.status(400).json({
-            error: 'Missing required parameter: id or url',
-            example: '/youtube-info?id=VIDEOID or /youtube-info?url=https://www.youtube.com/watch?v=VIDEOID'
-        });
-    }
-
-    // Create a request ID for tracking
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-
-    try {
-        // Construct the YouTube URL if only ID was provided
-        let fullUrl = videoUrl;
-        if (!fullUrl && videoId) {
-            fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        }
-
-        console.log(`[${requestId}] Fetching video info from ZM API for: ${fullUrl}`);
-
-        // ZM API configuration
-        const zmApiKey = "hBsrDies"; // API key as in content.js
-        const zmApiUrl = 'https://api.zm.io.vn/v1/social/autolink';
-
-        // Make request to ZM API
-        const zmOptions = {
-            method: 'POST',
-            headers: {
-                'apikey': zmApiKey,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ url: fullUrl })
-        };
-
-        // Fetch with retries
-        let zmResponse;
-        let retryCount = 0;
-        const maxRetries = 3;
-        let delay = 1000;
-
-        while (retryCount < maxRetries) {
-            try {
-                console.log(`[${requestId}] ZM API request attempt ${retryCount + 1}`);
-                zmResponse = await fetch(zmApiUrl, zmOptions);
-
-                if (zmResponse.ok) {
-                    break; // Success
-                } else if (zmResponse.status === 429) {
-                    // Rate limited
-                    console.log(`[${requestId}] ZM API rate limited, retrying in ${delay}ms`);
-                    await setTimeout(delay);
-                    delay *= 2; // Exponential backoff
-                    retryCount++;
-                } else {
-                    // Other error
-                    const errorText = await zmResponse.text();
-                    throw new Error(`ZM API error: ${zmResponse.status} ${zmResponse.statusText}. Body: ${errorText}`);
-                }
-            } catch (err) {
-                if (retryCount < maxRetries - 1) {
-                    console.log(`[${requestId}] ZM API request failed, retrying: ${err.message}`);
-                    await setTimeout(delay);
-                    delay *= 2;
-                    retryCount++;
-                } else {
-                    throw err;
-                }
-            }
-        }
-
-        if (!zmResponse || !zmResponse.ok) {
-            throw new Error('Failed to get response from ZM API after multiple attempts');
-        }
-
-        // Parse the ZM API response
-        const zmData = await zmResponse.json();
-
-        if (!zmData || !zmData.medias || !Array.isArray(zmData.medias)) {
-            throw new Error('Invalid data format received from ZM API');
-        }
-
-        console.log(`[${requestId}] ZM API responded with ${zmData.medias.length} media options`);
-
-        // Process and organize the media formats
-        const processedData = {
-            title: zmData.title || "",
-            thumbnail: zmData.thumbnail || "",
-            duration: zmData.duration || 0,
-            source: "zm.io.vn",
-            formats: {
-                video: [],
-                audio: []
-            },
-            // Include some recommended formats for convenience
-            recommended: {
-                video: null,
-                audio: null,
-                combined: null
-            }
-        };
-
-        // Process media options and categorize them
-        zmData.medias.forEach(media => {
-            // Create a clean format object
-            const format = {
-                url: media.url,
-                quality: media.quality || media.label || "Unknown",
-                formatId: media.formatId || "unknown",
-                type: media.type || (media.quality && media.quality.includes('audio') ? 'audio' : 'video'),
-                ext: media.ext || "mp4",
-                size: media.size || null,
-                bitrate: media.bitrate || null
-            };
-
-            // Categorize as audio or video
-            if (format.type === 'audio' || format.quality.toLowerCase().includes('audio')) {
-                processedData.formats.audio.push(format);
-                // Use first audio or lowest bitrate audio as recommended
-                if (!processedData.recommended.audio ||
-                    (format.bitrate &&
-                     processedData.recommended.audio.bitrate &&
-                     format.bitrate < processedData.recommended.audio.bitrate)) {
-                    processedData.recommended.audio = format;
-                }
-            } else {
-                processedData.formats.video.push(format);
-                // Track a decent quality video for recommendation
-                if (format.formatId === '18' || format.quality.includes('360p')) {
-                    processedData.recommended.combined = format;
-                }
-                // Use medium quality as recommended video
-                if (!processedData.recommended.video && (
-                    format.quality.includes('720p') ||
-                    format.quality.includes('480p'))) {
-                    processedData.recommended.video = format;
-                }
-            }
-        });
-
-        // Ensure we have recommendations
-        if (!processedData.recommended.video && processedData.formats.video.length > 0) {
-            processedData.recommended.video = processedData.formats.video[0];
-        }
-        if (!processedData.recommended.audio && processedData.formats.audio.length > 0) {
-            processedData.recommended.audio = processedData.formats.audio[0];
-        }
-        if (!processedData.recommended.combined) {
-            processedData.recommended.combined = processedData.recommended.video || processedData.recommended.audio;
-        }
-
-        // Return processed data
-        res.json({
-            success: true,
-            data: processedData
-        });
-
-    } catch (error) {
-        console.error(`[${requestId}] Error fetching video info:`, error);
-        res.status(500).json({
-            success: false,
-            error: `Failed to get video information: ${error.message}`
-        });
-    }
-});
-
-// Improve the download endpoint with better error handling and fallbacks
+// Simplified download endpoint using only RapidAPI for audio
 app.get('/download', async (req, res) => {
     const videoId = req.query.id;
-    const format = req.query.format || 'combined'; // 'video', 'audio', or 'combined'
     const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
     if (!videoId) {
         return res.status(400).json({
             success: false,
             error: 'חסר פרמטר חובה: id (מזהה סרטון)',
-            example: '/download?id=YOUTUBE_VIDEO_ID&format=audio|video|combined'
+            example: '/download?id=YOUTUBE_VIDEO_ID' // Format parameter removed
         });
     }
 
-    // Outer try block for initial info fetching and format selection
+    console.log(`[${requestId}] Audio download request for video ID: ${videoId}`);
+
     try {
-        console.log(`[${requestId}] Download request for video ID: ${videoId}, format: ${format}`);
+        // STEP 1: Get audio download link from RapidAPI
+        console.log(`[${requestId}] STEP 1: Getting audio URL from RapidAPI`);
 
-        // First fetch the video info using our own API
-        const infoUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/youtube-info?id=${videoId}`;
-        console.log(`[${requestId}] Fetching video info from: ${infoUrl}`);
+        const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28';
+        const rapidApiHost = 'youtube-downloader-api-fast-reliable-and-easy.p.rapidapi.com';
+        const youtubeWatchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const rapidApiUrl = `https://${rapidApiHost}/fetch_audio?url=${encodeURIComponent(youtubeWatchUrl)}`;
 
-        const infoResponse = await fetch(infoUrl);
+        let audioDownloadUrl;
+        let videoTitle = `Video ${videoId}`; // Default title
 
-        if (!infoResponse.ok) {
-            const errorText = await infoResponse.text();
-            console.error(`[${requestId}] Error fetching video info: ${infoResponse.status} ${errorText}`);
-            throw new Error(`שגיאה בקבלת מידע על הסרטון: ${infoResponse.status}. ${errorText}`);
+        console.log(`[${requestId}] Calling RapidAPI: ${rapidApiUrl}`);
+        const rapidApiResponse = await fetch(rapidApiUrl, {
+            method: 'GET',
+            headers: {
+                'x-rapidapi-key': rapidApiKey,
+                'x-rapidapi-host': rapidApiHost
+            },
+            timeout: 30000 // 30 second timeout
+        });
+
+        if (!rapidApiResponse.ok) {
+            const errorText = await rapidApiResponse.text();
+            console.error(`[${requestId}] RapidAPI error: ${rapidApiResponse.status} ${rapidApiResponse.statusText}. Body: ${errorText}`);
+            throw new Error(`Failed to fetch audio info from RapidAPI: ${rapidApiResponse.status}`);
         }
 
-        const infoData = await infoResponse.json();
+        const rapidApiData = await rapidApiResponse.json();
+        console.log(`[${requestId}] RapidAPI Response:`, JSON.stringify(rapidApiData).substring(0, 200) + '...');
 
-        if (!infoData.success || !infoData.data) {
-            console.error(`[${requestId}] Invalid response from youtube-info:`, infoData);
-            throw new Error('תגובה לא תקפה מנקודת הקצה של מידע הסרטון');
+        if (!rapidApiData || !rapidApiData.success || !rapidApiData.link) {
+            console.error(`[${requestId}] Unexpected RapidAPI response structure:`, rapidApiData);
+            throw new Error('Invalid response structure from RapidAPI or download link missing.');
         }
+        audioDownloadUrl = rapidApiData.link;
+        videoTitle = rapidApiData.title || videoTitle; // Use title from API if available
 
-        // Try to find a working format with fallbacks - simplified approach without validation
-        let downloadUrl;
-        let filename;
-        let size = 'unknown';
-        let qualityInfo = '';
-        let formatDescription = format;
-        let fallbackMessage = '';
+        console.log(`[${requestId}] Received audio download URL from RapidAPI: ${audioDownloadUrl.substring(0, 100)}...`);
+        console.log(`[${requestId}] Title: ${videoTitle}`);
 
-        // Track all attempts to report to user
-        const attemptedFormats = [];
+        // STEP 2: Prepare filename and redirect to proxy for download
+        let filename = `${videoTitle}.mp3`; // Assume mp3 extension
+        filename = filename.replace(/[<>:"/\\|?*]+/g, '_'); // Clean filename
 
-        // Attempt to get URL for the requested format - simplified
-        const tryFormat = (formatType, formatIndex = 0) => {
-            const desc = formatType + (formatIndex > 0 ? ` (alternative ${formatIndex})` : '');
-            attemptedFormats.push(desc);
+        const proxyDownloadUrl = `/proxy?url=${encodeURIComponent(audioDownloadUrl)}`;
 
-            console.log(`[${requestId}] Trying format: ${desc}`);
+        console.log(`[${requestId}] Redirecting to proxy URL for download: ${proxyDownloadUrl}`);
+        console.log(`[${requestId}] Filename: ${filename}`);
 
-            let url = null;
-            let fmtInfo = null;
+        // Set headers for file download and redirect
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+        return res.redirect(302, proxyDownloadUrl);
 
-            // Attempt primary format first
-            if (formatIndex === 0) {
-                if (formatType === 'audio' && infoData.data.recommended && infoData.data.recommended.audio) {
-                    url = infoData.data.recommended.audio.url;
-                    fmtInfo = infoData.data.recommended.audio;
-                } else if (formatType === 'video' && infoData.data.recommended && infoData.data.recommended.video) {
-                    url = infoData.data.recommended.video.url;
-                    fmtInfo = infoData.data.recommended.video;
-                } else if (formatType === 'combined' && infoData.data.recommended && infoData.data.recommended.combined) {
-                    url = infoData.data.recommended.combined.url;
-                    fmtInfo = infoData.data.recommended.combined;
-                }
-            }
-            // Try alternative formats from the formats array
-            else {
-                if (formatType === 'audio' && infoData.data.formats && infoData.data.formats.audio) {
-                    const alternativeIndex = formatIndex - 1;
-                    if (alternativeIndex < infoData.data.formats.audio.length) {
-                        fmtInfo = infoData.data.formats.audio[alternativeIndex];
-                        url = fmtInfo.url;
-                    }
-                } else if (formatType === 'video' && infoData.data.formats && infoData.data.formats.video) {
-                    const alternativeIndex = formatIndex - 1;
-                    if (alternativeIndex < infoData.data.formats.video.length) {
-                        fmtInfo = infoData.data.formats.video[alternativeIndex];
-                        url = fmtInfo.url;
-                    }
-                }
-            }
-
-            if (!url) {
-                console.log(`[${requestId}] No URL found for format: ${desc}`);
-                return null;
-            }
-
-            return {
-                url,
-                formatInfo: fmtInfo,
-                description: desc
-            };
-        };
-
-        // First try the explicitly requested format
-        let result = tryFormat(format);
-
-        // If the primary format fails, try alternatives
-        if (!result) {
-            console.log(`[${requestId}] Primary format '${format}' failed, trying alternatives...`);
-            fallbackMessage = `הפורמט המבוקש (${format}) לא היה זמין. `;
-
-            // If the requested format is 'combined', try 'video' then 'audio'
-            if (format === 'combined') {
-                fallbackMessage += 'מנסה פורמט וידאו...';
-                result = tryFormat('video');
-
-                if (!result) {
-                    fallbackMessage += ' מנסה פורמט אודיו בלבד...';
-                    result = tryFormat('audio');
-                }
-            }
-            // If requested format is 'video', try alternatives from the formats.video array
-            else if (format === 'video') {
-                const videoFormatCount = infoData.data.formats && infoData.data.formats.video ?
-                                        infoData.data.formats.video.length : 0;
-
-                for (let i = 1; i <= Math.min(videoFormatCount, 3) && !result; i++) {
-                    fallbackMessage += ` מנסה פורמט וידאו חלופי ${i}...`;
-                    result = tryFormat('video', i);
-                }
-
-                // If all video formats fail, try combined then audio
-                if (!result) {
-                    fallbackMessage += ' מנסה פורמט משולב...';
-                    result = tryFormat('combined');
-
-                    if (!result) {
-                        fallbackMessage += ' מנסה פורמט אודיו בלבד...';
-                        result = tryFormat('audio');
-                    }
-                }
-            }
-            // If requested format is 'audio', try alternatives from the formats.audio array
-            else if (format === 'audio') {
-                const audioFormatCount = infoData.data.formats && infoData.data.formats.audio ?
-                                        infoData.data.formats.audio.length : 0;
-
-                for (let i = 1; i <= Math.min(audioFormatCount, 3) && !result; i++) {
-                    fallbackMessage += ` מנסה פורמט אודיו חלופי ${i}...`;
-                    result = tryFormat('audio', i);
-                }
-
-                // If all audio formats fail, try combined then video
-                if (!result) {
-                    fallbackMessage += ' מנסה פורמט משולב...';
-                    result = tryFormat('combined');
-
-                    if (!result) {
-                        fallbackMessage += ' מנסה פורמט וידאו...';
-                        result = tryFormat('video');
-                    }
-                }
-            }
-        }
-
-        // If we still don't have a valid URL, throw an error
-        if (!result) {
-            console.error(`[${requestId}] All format attempts failed. Attempted: ${attemptedFormats.join(', ')}`);
-            throw new Error(`כל נסיונות ההורדה נכשלו. ניסינו: ${attemptedFormats.join(', ')}`);
-        }
-
-        // We have a working URL, proceed with download
-        downloadUrl = result.url;
-        const formatInfo = result.formatInfo || {};
-        formatDescription = result.description;
-
-        // Set up filename and other info
-        const ext = formatInfo.ext || (formatDescription.includes('audio') ? 'mp3' : 'mp4');
-        let filenameBase = infoData.data.title || videoId;
-
-        // Add format suffix if using a fallback format
-        if (fallbackMessage) {
-            filenameBase += ` (${formatDescription})`;
-        }
-
-        filename = `${filenameBase}.${ext}`;
-
-        // Get size and quality info if available
-        if (formatInfo.size) {
-            size = formatFileSize(formatInfo.size);
-        }
-        if (formatInfo.quality) {
-            qualityInfo = formatInfo.quality;
-        }
-
-        // Clean filename
-        filename = filename.replace(/[<>:"/\\|?*]+/g, '_');
-
-        // Check if URL might be expired
-        if (downloadUrl.includes('expire=')) {
-            try {
-                const urlObj = new URL(downloadUrl);
-                const expire = urlObj.searchParams.get('expire');
-
-                if (expire) {
-                    const expireTimestamp = parseInt(expire, 10) * 1000; // Convert to milliseconds
-                    const currentTime = Date.now();
-
-                    if (expireTimestamp < currentTime) {
-                        console.error(`[${requestId}] YouTube URL has expired at ${new Date(expireTimestamp).toISOString()} (${Math.round((currentTime - expireTimestamp) / 1000 / 60)} minutes ago)`);
-                        throw new Error('כתובת ההורדה פגת תוקף. אנא רענן את הדף ונסה שוב');
-                    }
-                }
-            } catch (urlError) {
-                if (urlError.message.includes('כתובת ההורדה פגת תוקף')) {
-                    throw urlError; // Re-throw our custom error
-                }
-                // Otherwise continue with the download attempt
-            }
-        }
-
-        // Log download details
-        console.log(`[${requestId}] Download details:
-            Title: ${infoData.data.title || 'Unknown'}
-            Format requested: ${format}
-            Format used: ${formatDescription}
-            Fallback used: ${fallbackMessage ? 'Yes' : 'No'}
-            Filename: ${filename}
-            Size: ${size}
-            Quality: ${qualityInfo}
-            URL length: ${downloadUrl.length} chars
-            Expires: ${downloadUrl.includes('expire=') ? 'Yes (YouTube time-limited URL)' : 'No'}
-        `);
-
-        // Set up client response
-        // Construct the proxy URL *before* creating the HTML response
-        const proxyDownloadUrl = `/proxy?url=${encodeURIComponent(downloadUrl)}`;
-
-        const htmlResponse = fallbackMessage ? `
-            <html>
-                <head>
-                    <title>הורדה בפורמט חלופי</title>
-                    <meta charset="UTF-8">
-                    <meta http-equiv="refresh" content="3;url=${proxyDownloadUrl}">
-                    <style>
-                        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f0f0f0; text-align: center; direction: rtl; }
-                        .container { max-width: 700px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                        h1 { color: #c00; margin-top: 0; }
-                        .success-icon { font-size: 48px; color: #4CAF50; margin-bottom: 20px; }
-                        .download-btn { display: inline-block; margin-top: 20px; padding: 12px 25px; background: #c00; color: white; text-decoration: none; border-radius: 4px; font-size: 16px; }
-                        .download-btn:hover { background: #900; }
-                        .info { background: #e8f5e9; padding: 15px; border-radius: 4px; margin: 20px 0; text-align: right; }
-                        .progress { height: 5px; background: #f0f0f0; border-radius: 5px; margin: 20px 0; overflow: hidden; }
-                        .progress-bar { height: 100%; width: 0; background: #c00; animation: progress 3s linear forwards; }
-                        @keyframes progress { to { width: 100%; } }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="success-icon">✓</div>
-                        <h1>הורדה מתחילה בעוד 3 שניות...</h1>
-                        <div class="progress"><div class="progress-bar"></div></div>
-                        <div class="info">
-                            <p><strong>הפורמט המקורי לא היה זמין.</strong> ${fallbackMessage}</p>
-                            <p><strong>משתמש בפורמט:</strong> ${formatDescription}</p>
-                            <p><strong>שם קובץ:</strong> ${filename}</p>
-                            <p><strong>גודל:</strong> ${size}</p>
-                            <p><strong>איכות:</strong> ${qualityInfo || 'לא צוין'}</p>
-                        </div>
-                        <p>אם ההורדה לא מתחילה אוטומטית, לחץ על הכפתור:</p>
-                        <a href="${proxyDownloadUrl}" class="download-btn">התחל הורדה</a>
-                    </div>
-                    <script>
-                        // The meta refresh tag already handles the redirect
-                        // setTimeout(function() {
-                        //     window.location.href = "${proxyDownloadUrl}";
-                        // }, 3000);
-                    </script>
-                </body>
-            </html>
-        ` : null;
-
-        // Instead of redirecting, download the file through our server and pipe it to the client
-        try {
-            console.log(`[${requestId}] Starting direct download of file from: ${downloadUrl}`);
-
-            // Set appropriate headers for file download
-            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-
-            // If we have fallback info, show it first before starting download
-            if (htmlResponse) {
-                console.log(`[${requestId}] Showing fallback info page with 3-second countdown`);
-                res.send(htmlResponse);
-                return; // End the request here, user will be redirected by the HTML page
-            }
-
-            console.log(`[${requestId}] Redirecting to proxy URL: ${proxyDownloadUrl}`);
-
-            // Set appropriate headers for file download (already set before the inner try)
-            // res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`); // Already set
-
-            // Redirect to the PROXY URL
-            return res.redirect(302, proxyDownloadUrl);
-        } catch (error) {
-            console.error(`[${requestId}] Error during redirect setup:`, error); // Changed error context message
-
-            // Return a user-friendly HTML error page
-            const errorFormat = format || 'audio'; // Default to audio if format is undefined
-            res.status(500).send(`
+    } catch (error) {
+        console.error(`[${requestId}] Download error:`, error);
+        // Return a user-friendly HTML error page
+        res.status(500).send(`
             <html>
                 <head>
                     <title>שגיאת הורדה</title>
@@ -1049,81 +646,26 @@ app.get('/download', async (req, res) => {
                         h1 { color: #c00; margin-top: 0; }
                         .back-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #c00; color: white; text-decoration: none; border-radius: 4px; }
                         .back-btn:hover { background: #900; }
-                        .retry-btn { display: inline-block; margin-top: 20px; margin-right: 10px; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px; }
-                        .retry-btn:hover { background: #0b7dda; }
                         .error-details { background: #ffe6e6; padding: 15px; border-radius: 4px; margin-top: 20px; }
                         code { background: #f8f8f8; padding: 2px 5px; border-radius: 3px; font-family: monospace; direction: ltr; display: inline-block; }
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>שגיאה בהורדת הסרטון</h1>
-                        <p>${error.message || 'שגיאה לא ידועה התרחשה בעת ניסיון להוריד את הסרטון'}</p>
-
+                        <h1>שגיאה בהורדת האודיו</h1>
+                        <p>${error.message || 'שגיאה לא ידועה התרחשה בעת ניסיון להוריד את האודיו'}</p>
                         <div class="error-details">
                             <p><strong>מזהה סרטון:</strong> <code>${videoId}</code></p>
-                            <p><strong>פורמט שנבחר:</strong> ${errorFormat}</p>
                             <p><strong>מזהה בקשה:</strong> <code>${requestId}</code></p>
                             <p><strong>זמן השגיאה:</strong> ${new Date().toLocaleString('he-IL')}</p>
                         </div>
-
-                        <p>אפשר לנסות שוב עם פורמט אחר:</p>
-                        <a href="/download?id=${videoId}&format=${errorFormat === 'audio' ? 'video' : 'audio'}" class="retry-btn">
-                            נסה ב${errorFormat === 'audio' ? 'וידאו' : 'אודיו בלבד'}
-                        </a>
                         <a href="/" class="back-btn">חזרה לדף הראשי</a>
                     </div>
                 </body>
             </html>
         `);
-        } // Closes inner catch block
-
-    } catch (error) { // Outer catch for info fetching/format selection errors
-        console.error(`[${requestId}] Initial download setup error:`, error);
-        // Return a user-friendly HTML error page if headers haven't been sent
-        if (!res.headersSent) {
-            const errorFormat = format || 'audio'; // Default to audio if format is undefined
-            res.status(500).send(`
-            <html>
-                <head>
-                    <title>שגיאת הורדה</title>
-                    <meta charset="UTF-8">
-                    <style>
-                        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f0f0f0; text-align: right; direction: rtl; }
-                        .container { max-width: 600px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                        h1 { color: #c00; margin-top: 0; }
-                        .back-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #c00; color: white; text-decoration: none; border-radius: 4px; }
-                        .back-btn:hover { background: #900; }
-                        .retry-btn { display: inline-block; margin-top: 20px; margin-right: 10px; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px; }
-                        .retry-btn:hover { background: #0b7dda; }
-                        .error-details { background: #ffe6e6; padding: 15px; border-radius: 4px; margin-top: 20px; }
-                        code { background: #f8f8f8; padding: 2px 5px; border-radius: 3px; font-family: monospace; direction: ltr; display: inline-block; }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>שגיאה בהכנת ההורדה</h1>
-                        <p>${error.message || 'שגיאה לא ידועה התרחשה בעת ניסיון להכין את ההורדה'}</p>
-
-                        <div class="error-details">
-                            <p><strong>מזהה סרטון:</strong> <code>${videoId}</code></p>
-                            <p><strong>פורמט שנבחר:</strong> ${errorFormat}</p>
-                            <p><strong>מזהה בקשה:</strong> <code>${requestId}</code></p>
-                            <p><strong>זמן השגיאה:</strong> ${new Date().toLocaleString('he-IL')}</p>
-                        </div>
-
-                        <p>אפשר לנסות שוב:</p>
-                        <a href="/download?id=${videoId}&format=${errorFormat}" class="retry-btn">
-                            נסה שוב
-                        </a>
-                        <a href="/" class="back-btn">חזרה לדף הראשי</a>
-                    </div>
-                </body>
-            </html>
-        `);
-        } // Closes if (!res.headersSent) for outer catch
-    } // Closes outer catch block
-}); // Closes app.get('/download', ...)
+    }
+});
 
 
 // Helper function to format file size
@@ -1517,59 +1059,31 @@ app.get('/', (req, res) => {
                 <div class="container">
                     <div class="tab-container">
                         <div class="tab-buttons">
-                            <button class="tab-button active" data-tab="download">הורדת וידאו</button>
+                            <button class="tab-button active" data-tab="download">הורדת אודיו</button> <!-- Changed label -->
                             <button class="tab-button" data-tab="transcribe">תמלול אודיו</button>
                         </div>
 
                         <div class="tab-content active" id="download-tab">
                             <div class="download-card">
-                                <form id="download-form" action="/process" method="GET">
+                                <form id="download-form"> <!-- Removed action/method -->
                                     <div class="form-group">
-                                        <label for="download-url">הדבק כתובת סרטון YouTube:</label>
+                                        <label for="download-url">הדבק כתובת סרטון YouTube להורדת אודיו:</label>
                                         <input type="text" id="download-url" name="url" class="input-url"
                                             placeholder="https://www.youtube.com/watch?v=..." required
                                             dir="ltr">
                                     </div>
-
-                                    <div class="form-group">
-                                        <label>בחר פורמט להורדה:</label>
-                                        <div class="radio-group">
-                                            <label class="radio-option">
-                                                <input type="radio" name="format" value="audio" checked>
-                                                אודיו בלבד (MP3)
-                                            </label>
-                                            <label class="radio-option">
-                                                <input type="radio" name="format" value="video">
-                                                וידאו איכות גבוהה (MP4)
-                                            </label>
-                                            <label class="radio-option">
-                                                <input type="radio" name="format" value="combined">
-                                                וידאו + אודיו (MP4)
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <button type="submit" class="submit-btn">הורד עכשיו</button>
+                                    <!-- Format selection removed -->
+                                    <button type="submit" class="submit-btn">הורד אודיו (MP3)</button>
                                 </form>
 
                                 <div class="error-message" id="download-error-box"></div>
 
                                 <div class="loading" id="download-loading">
                                     <div class="spinner"></div>
-                                    <p>מאתר פורמטים זמינים...</p>
+                                    <p>מכין את הורדת האודיו...</p>
                                 </div>
 
-                                <div class="preview" id="download-preview">
-                                    <h3>פרטי הסרטון:</h3>
-                                    <div class="video-info">
-                                        <img id="download-thumbnail" class="thumbnail" src="" alt="תמונה ממוזערת">
-                                        <div>
-                                            <h4 id="download-video-title"></h4>
-                                            <p id="download-video-duration"></p>
-                                        </div>
-                                    </div>
-                                    <a id="download-btn" class="submit-btn">התחל הורדה</a>
-                                </div>
+                                <!-- Preview section removed -->
                             </div>
                         </div>
 
@@ -1636,16 +1150,11 @@ app.get('/', (req, res) => {
                     <div class="endpoints">
                         <h2>ממשקי API זמינים:</h2>
 
+                        <!-- Removed /youtube-info endpoint -->
                         <div class="endpoint">
                             <span class="method">GET</span>
-                            <code>/youtube-info?id=YOUTUBE_VIDEO_ID</code>
-                            <p>מחזיר פרטים על כל הפורמטים הזמינים לסרטון YouTube.</p>
-                        </div>
-
-                        <div class="endpoint">
-                            <span class="method">GET</span>
-                            <code>/download?id=YOUTUBE_VIDEO_ID&format=audio|video|combined</code>
-                            <p>מוריד סרטון YouTube בפורמט הנבחר.</p>
+                            <code>/download?id=YOUTUBE_VIDEO_ID</code>
+                            <p>מוריד את האודיו (MP3) של סרטון YouTube.</p>
                         </div>
 
                         <div class="endpoint">
@@ -1689,23 +1198,19 @@ app.get('/', (req, res) => {
                             });
                         });
 
-                        // Download form functionality (similar to existing code)
-                        const downloadForm = document.getElementById('download-form');
-                        const downloadUrlInput = document.getElementById('download-url');
-                        const downloadErrorBox = document.getElementById('download-error-box');
-                        const downloadLoading = document.getElementById('download-loading');
-                        const downloadPreview = document.getElementById('download-preview');
-                        const downloadThumbnail = document.getElementById('download-thumbnail');
-                        const downloadVideoTitle = document.getElementById('download-video-title');
-                        const downloadVideoDuration = document.getElementById('download-video-duration');
-                        const downloadBtn = document.getElementById('download-btn');
+                        // Simplified Download form functionality
+                        const downloadForm = document.getElementById('download-form'),
+                        downloadUrlInput = document.getElementById('download-url'),
+                        downloadErrorBox = document.getElementById('download-error-box'),
+                        downloadLoading = document.getElementById('download-loading');
+                        // Preview elements removed
 
                         downloadForm.addEventListener('submit', async function(e) {
                             e.preventDefault();
 
-                            // Hide any previous errors and preview
+                            // Hide previous errors and loading
                             downloadErrorBox.style.display = 'none';
-                            downloadPreview.classList.remove('active');
+                            downloadLoading.style.display = 'none'; // Hide loading initially
 
                             const url = downloadUrlInput.value.trim();
                             if (!url) {
@@ -1727,71 +1232,35 @@ app.get('/', (req, res) => {
                                 return;
                             }
 
-                            // Show loading indicator
-                            downloadLoading.style.display = 'block';
+                            // Show loading indicator (optional, as download starts immediately)
+                            // downloadLoading.style.display = 'block';
 
-                            try {
-                                // Get video info
-                                const response = await fetch(\`/youtube-info?id=\${videoId}\`);
-                                if (!response.ok) {
-                                    throw new Error(\`שגיאה בקבלת מידע על הסרטון: \${response.status} \${response.statusText}\`);
-                                }
+                            // Construct the download URL and initiate download immediately
+                            const downloadUrl = \`/download?id=\${videoId}\`;
+                            console.log('Initiating download:', downloadUrl);
 
-                                const data = await response.json();
-                                if (!data.success) {
-                                    throw new Error(data.error || 'שגיאה לא ידועה בקבלת מידע על הסרטון');
-                                }
+                            // Redirect the browser to start the download
+                            window.location.href = downloadUrl;
 
-                                // Hide loading and show preview
-                                downloadLoading.style.display = 'none';
-
-                                // Update preview with video info
-                                downloadThumbnail.src = data.data.thumbnail || 'https://via.placeholder.com/120x68.png?text=No+Thumbnail';
-                                downloadVideoTitle.textContent = data.data.title || 'סרטון ללא כותרת';
-
-                                // Format duration in seconds to MM:SS
-                                const durationSeconds = data.data.duration || 0;
-                                const minutes = Math.floor(durationSeconds / 60);
-                                const seconds = Math.floor(durationSeconds % 60);
-                                downloadVideoDuration.textContent = \`אורך: \${minutes}:\${seconds < 10 ? '0' : ''}\${seconds}\`;
-
-                                // Update download button
-                                const format = document.querySelector('input[name="format"]:checked').value;
-                                downloadBtn.href = \`/download?id=\${videoId}&format=\${format}\`;
-
-                                // Show preview
-                                downloadPreview.classList.add('active');
-
-                            } catch (error) {
-                                downloadLoading.style.display = 'none';
-                                showError(downloadErrorBox, error.message);
-                            }
+                            // Optionally hide loading after a short delay, as the browser handles the download
+                            // setTimeout(() => { downloadLoading.style.display = 'none'; }, 2000);
                         });
 
-                        // Update download link when format changes
-                        document.querySelectorAll('input[name="format"]').forEach(radio => {
-                            radio.addEventListener('change', function() {
-                                if (downloadPreview.classList.contains('active')) {
-                                    const videoId = extractVideoId(downloadUrlInput.value);
-                                    const format = document.querySelector('input[name="format"]:checked').value;
-                                    downloadBtn.href = \`/download?id=\${videoId}&format=\${format}\`;
-                                }
-                            });
-                        });
+                        // Format selection logic removed
 
                         // Transcribe form functionality
-                        const transcribeForm = document.getElementById('transcribe-form');
-                        const transcribeUrlInput = document.getElementById('transcribe-url');
-                        const transcribeErrorBox = document.getElementById('transcribe-error-box');
-                        const transcribeLoading = document.getElementById('transcribe-loading');
-                        const transcribePreview = document.getElementById('transcribe-preview');
-                        const transcribeThumbnail = document.getElementById('transcribe-thumbnail');
-                        const transcribeVideoTitle = document.getElementById('transcribe-video-title');
-                        const transcribeVideoDuration = document.getElementById('transcribe-video-duration');
-                        const jsonBtn = document.getElementById('transcribe-json-btn');
-                        const srtBtn = document.getElementById('transcribe-srt-btn');
-                        const txtBtn = document.getElementById('transcribe-txt-btn');
-                        const transcriptText = document.getElementById('transcript-text');
+                        const transcribeForm = document.getElementById('transcribe-form'),
+                        transcribeUrlInput = document.getElementById('transcribe-url'),
+                        transcribeErrorBox = document.getElementById('transcribe-error-box'),
+                        transcribeLoading = document.getElementById('transcribe-loading'),
+                        transcribePreview = document.getElementById('transcribe-preview'),
+                        transcribeThumbnail = document.getElementById('transcribe-thumbnail'),
+                        transcribeVideoTitle = document.getElementById('transcribe-video-title'),
+                        transcribeVideoDuration = document.getElementById('transcribe-video-duration'),
+                        jsonBtn = document.getElementById('transcribe-json-btn'),
+                        srtBtn = document.getElementById('transcribe-srt-btn'),
+                        txtBtn = document.getElementById('transcribe-txt-btn'),
+                        transcriptText = document.getElementById('transcript-text');
 
                         transcribeForm.addEventListener('submit', async function(e) {
                             e.preventDefault();
@@ -1825,16 +1294,7 @@ app.get('/', (req, res) => {
                             transcribeLoading.style.display = 'block';
 
                             try {
-                                // First get video info for metadata
-                                const infoResponse = await fetch(\`/youtube-info?id=\${videoId}\`);
-                                if (!infoResponse.ok) {
-                                    throw new Error(\`שגיאה בקבלת מידע על הסרטון: \${infoResponse.status} \${infoResponse.statusText}\`);
-                                }
-
-                                const infoData = await infoResponse.json();
-                                if (!infoData.success) {
-                                    throw new Error(infoData.error || 'שגיאה לא ידועה בקבלת מידע על הסרטון');
-                                }
+                                // Info fetching removed from here, handled by backend /transcribe
 
                                 // Get selected format
                                 const format = document.querySelector('input[name="transcribe-format"]:checked').value;
@@ -1855,22 +1315,17 @@ app.get('/', (req, res) => {
                                     throw new Error(errorMessage);
                                 }
 
-                                // For txt and srt formats, we get back the raw content
+                                // Hide loading
+                                transcribeLoading.style.display = 'none';
+
+                                // Process response based on format
                                 if (format === 'txt' || format === 'srt') {
                                     const textData = await transcribeResponse.text();
 
-                                    // Hide loading and show preview
-                                    transcribeLoading.style.display = 'none';
-
-                                    // Update preview with video info
-                                    transcribeThumbnail.src = infoData.data.thumbnail || 'https://via.placeholder.com/120x68.png?text=No+Thumbnail';
-                                    transcribeVideoTitle.textContent = infoData.data.title || 'סרטון ללא כותרת';
-
-                                    // Format duration in seconds to MM:SS
-                                    const durationSeconds = infoData.data.duration || 0;
-                                    const minutes = Math.floor(durationSeconds / 60);
-                                    const seconds = Math.floor(durationSeconds % 60);
-                                    transcribeVideoDuration.textContent = \`אורך: \${minutes}:\${seconds < 10 ? '0' : ''}\${seconds}\`;
+                                    // Update preview with basic info (title/duration might come from transcribe response later if needed)
+                                    transcribeThumbnail.src = 'https://via.placeholder.com/120x68.png?text=Transcribed'; // Placeholder
+                                    transcribeVideoTitle.textContent = `Transcribed Video ID: ${videoId}`; // Use ID as title for now
+                                    transcribeVideoDuration.textContent = ''; // Clear duration
 
                                     // Show transcript preview
                                     transcriptText.textContent = textData.substring(0, 500) + (textData.length > 500 ? '...' : '');
@@ -1883,34 +1338,35 @@ app.get('/', (req, res) => {
 
                                     // Show preview
                                     transcribePreview.classList.add('active');
-                                } else {
-                                    // For JSON format, we get back a JSON object
+                                } else { // JSON format
                                     const jsonData = await transcribeResponse.json();
 
                                     if (!jsonData.success) {
                                         throw new Error(jsonData.error || 'שגיאה לא ידועה בתמלול');
                                     }
 
-                                    // Hide loading and show preview
-                                    transcribeLoading.style.display = 'none';
+                                    // Extract data for preview
+                                    const transcriptInfo = jsonData.data;
+                                    const transcriptData = transcriptInfo.transcript.text || (transcriptInfo.transcript.words ? transcriptInfo.transcript.words.map(w => w.text).join(' ') : '');
 
-                                    // Check if we have the traditional format (format=json) or the all format (format=all)
-                                    const transcriptData = jsonData.data.formats ? jsonData.data.formats.txt : jsonData.data.transcript.text;
+                                    // Update preview with info from response
+                                    transcribeThumbnail.src = 'https://via.placeholder.com/120x68.png?text=Transcribed'; // Placeholder, API doesn't provide thumbnail
+                                    transcribeVideoTitle.textContent = transcriptInfo.title || `Video ID: ${videoId}`;
 
-                                    // Update preview with video info
-                                    transcribeThumbnail.src = infoData.data.thumbnail || 'https://via.placeholder.com/120x68.png?text=No+Thumbnail';
-                                    transcribeVideoTitle.textContent = infoData.data.title || 'סרטון ללא כותרת';
-
-                                    // Format duration in seconds to MM:SS
-                                    const durationSeconds = infoData.data.duration || 0;
-                                    const minutes = Math.floor(durationSeconds / 60);
-                                    const seconds = Math.floor(durationSeconds % 60);
-                                    transcribeVideoDuration.textContent = \`אורך: \${minutes}:\${seconds < 10 ? '0' : ''}\${seconds}\`;
+                                    // Format duration if available
+                                    const durationSeconds = transcriptInfo.duration || 0;
+                                    if (durationSeconds > 0) {
+                                        const minutes = Math.floor(durationSeconds / 60);
+                                        const seconds = Math.floor(durationSeconds % 60);
+                                        transcribeVideoDuration.textContent = \`אורך: \${minutes}:\${seconds < 10 ? '0' : ''}\${seconds}\`;
+                                    } else {
+                                        transcribeVideoDuration.textContent = '';
+                                    }
 
                                     // Show transcript preview
                                     transcriptText.textContent = typeof transcriptData === 'string' ?
                                         (transcriptData.substring(0, 500) + (transcriptData.length > 500 ? '...' : '')) :
-                                        'תמלול התקבל בהצלחה. לחץ על אחד מהכפתורים למטה כדי להוריד את התמלול בפורמט הרצוי.';
+                                        'תמלול התקבל בהצלחה (פורמט JSON). לחץ על אחד מהכפתורים למטה כדי להוריד.';
                                     transcriptText.style.display = 'block';
 
                                     // Update download buttons
@@ -2006,8 +1462,8 @@ app.use((req, res) => {
                         <ul>
                             <li><code>GET /</code> - Home page</li>
                             <li><code>GET /proxy?url=URL</code> - Proxy endpoint</li>
-                            <li><code>GET /youtube-info?id=VIDEO_ID</code> - Get video formats</li>
-                            <li><code>GET /download?id=VIDEO_ID&format=audio|video|combined</code> - Download video</li>
+                            <!-- Removed /youtube-info -->
+                            <li><code>GET /download?id=VIDEO_ID</code> - Download audio</li>
                             <li><code>GET /transcribe?id=VIDEO_ID&format=json|srt|txt</code> - Transcribe video</li>
                             <li><code>GET /health</code> - Health check</li>
                             <li><code>GET /test-proxy?url=URL</code> - Test proxy</li>
@@ -2026,8 +1482,8 @@ app.listen(PORT, () => {
     console.log('Available routes:');
     console.log('  - GET /                                      Home page');
     console.log('  - GET /proxy?url=URL                         Proxy endpoint');
-    console.log('  - GET /youtube-info?id=VIDEO_ID              Get video formats');
-    console.log('  - GET /download?id=VIDEO_ID&format=FORMAT    Download video');
+    // console.log('  - GET /youtube-info?id=VIDEO_ID              Get video formats'); // Removed
+    console.log('  - GET /download?id=VIDEO_ID                  Download audio'); // Updated
     console.log('  - GET /transcribe?id=VIDEO_ID&format=FORMAT  Transcribe video');
     console.log('  - GET /health                                Health check');
     console.log('  - GET /test-proxy?url=URL                    Test proxy');
@@ -2040,7 +1496,7 @@ app.get('/health', (req, res) => {
     return res.status(200).json({
         status: 'OK',
         timestamp: new Date().toISOString(),
-        endpoints: ['/proxy', '/youtube-info', '/transcribe', '/download']
+        endpoints: ['/proxy', '/transcribe', '/download'] // Removed /youtube-info
     });
 });
 
@@ -2111,7 +1567,7 @@ app.get('/transcribe', async (req, res) => {
         let audioDownloadUrl;
         let audioFileSize = 0;
         const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`); // Keep temp file logic
-        let zmData = { title: '', duration: 0 }; // Placeholder for title/duration
+        let apiMetadata = { title: '', duration: 0 }; // Placeholder for title/duration from API
 
         try {
             console.log(`[${requestId}] Calling RapidAPI: ${rapidApiUrl}`);
@@ -2142,11 +1598,11 @@ app.get('/transcribe', async (req, res) => {
             }
             audioDownloadUrl = rapidApiData.link;
             // Store title and duration if available from the API response
-            zmData.title = rapidApiData.title || `Video ${videoId}`;
-            zmData.duration = rapidApiData.duration || 0; // Assuming duration is in seconds
+            apiMetadata.title = rapidApiData.title || `Video ${videoId}`;
+            apiMetadata.duration = rapidApiData.duration || 0; // Assuming duration is in seconds
 
             console.log(`[${requestId}] Received audio download URL from RapidAPI: ${audioDownloadUrl.substring(0, 100)}...`);
-            console.log(`[${requestId}] Title: ${zmData.title}, Duration: ${zmData.duration}s`);
+            console.log(`[${requestId}] Title: ${apiMetadata.title}, Duration: ${apiMetadata.duration}s`);
 
             // Now download the audio file using the obtained URL
             console.log(`[${requestId}] Downloading audio from RapidAPI link to ${tempFileName}`);
@@ -2232,13 +1688,13 @@ app.get('/transcribe', async (req, res) => {
         console.log(`[${requestId}] STEP 5: Formatting results as ${format}`);
 
         if (format === 'json') {
-            // Return raw JSON data from ElevenLabs
+            // Return raw JSON data from ElevenLabs, including metadata from RapidAPI
             return res.json({
                 success: true,
                 data: {
                     videoId: videoId,
-                    title: zmData.title || '',
-                    duration: zmData.duration || 0,
+                    title: apiMetadata.title,
+                    duration: apiMetadata.duration,
                     transcript: transcriptionData,
                     language: transcriptionData.language || 'unknown'
                 }
@@ -2295,7 +1751,7 @@ app.get('/transcribe', async (req, res) => {
             }
 
             res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.srt"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || videoId}.srt"`);
             return res.send(srtContent);
         } else if (format === 'txt') {
             // Convert to plain text format
@@ -2309,7 +1765,7 @@ app.get('/transcribe', async (req, res) => {
             }
 
             res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.txt"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || videoId}.txt"`);
             return res.send(plainText);
         } else {
             throw new Error(`פורמט לא נתמך: ${format}. יש להשתמש ב-json, srt, או txt.`);
@@ -2420,7 +1876,10 @@ async function downloadFile(url, targetPath, requestId) {
             // Check if response is successful
             if (response.statusCode !== 200) {
                 fileStream.close();
-                fs.unlinkSync(targetPath); // Clean up the file
+                // Attempt to delete the file only if it exists
+                if (fs.existsSync(targetPath)) {
+                    fs.unlinkSync(targetPath);
+                }
                 return reject(new Error(`Download failed with status code ${response.statusCode}`));
             }
 
@@ -2432,7 +1891,7 @@ async function downloadFile(url, targetPath, requestId) {
                 downloadedBytes += chunk.length;
                 // Log progress every ~1MB or 10% for larger files
                 if (downloadedBytes % 1000000 < chunk.length ||
-                    (totalBytes > 0 && downloadedBytes / totalBytes >= 0.1)) {
+                    (totalBytes > 0 && downloadedBytes / totalBytes >= 0.1 && downloadedBytes / totalBytes < 1)) { // Avoid logging 100% twice
                     console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB ${totalBytes ? `(${Math.round(downloadedBytes/totalBytes*100)}%)` : ''}`);
                 }
             });
@@ -2442,39 +1901,53 @@ async function downloadFile(url, targetPath, requestId) {
 
             // Handle download completion
             fileStream.on('finish', () => {
-                fileStream.close();
-
-                // Verify file was downloaded successfully
-                const stats = fs.statSync(targetPath);
-                if (stats.size === 0) {
-                    fs.unlinkSync(targetPath); // Delete empty file
-                    return reject(new Error('Downloaded file is empty'));
-                }
-
-                console.log(`[${requestId}] Download completed. File size: ${stats.size} bytes`);
-                resolve(stats.size);
+                fileStream.close(async () => { // Ensure close completes before checking stats
+                    try {
+                        // Verify file was downloaded successfully
+                        const stats = fs.statSync(targetPath);
+                        if (stats.size === 0) {
+                            fs.unlinkSync(targetPath); // Delete empty file
+                            return reject(new Error('Downloaded file is empty'));
+                        }
+                        console.log(`[${requestId}] Download completed. File size: ${stats.size} bytes`);
+                        resolve(stats.size);
+                    } catch (statError) {
+                        console.error(`[${requestId}] Error checking file stats after download:`, statError);
+                        reject(statError);
+                    }
+                });
             });
 
             // Handle errors during streaming
             fileStream.on('error', (err) => {
+                console.error(`[${requestId}] File stream error during download:`, err);
                 fileStream.close();
-                fs.unlinkSync(targetPath); // Clean up the file
+                 // Attempt to delete the file only if it exists
+                if (fs.existsSync(targetPath)) {
+                    fs.unlinkSync(targetPath);
+                }
                 reject(err);
             });
         });
 
         // Handle request errors
         req.on('error', (err) => {
-            fileStream.close();
-            fs.unlinkSync(targetPath); // Clean up the file
+             console.error(`[${requestId}] Request error during download:`, err);
+             // Attempt to delete the file only if it exists
+             if (fs.existsSync(targetPath)) {
+                 try { fs.unlinkSync(targetPath); } catch {}
+             }
             reject(err);
         });
 
         // Handle timeout
         req.on('timeout', () => {
-            req.destroy();
-            fileStream.close();
-            fs.unlinkSync(targetPath); // Clean up the file
+            console.error(`[${requestId}] Download request timed out`);
+            req.destroy(); // Destroy the request
+             // Attempt to delete the file only if it exists
+             if (fs.existsSync(targetPath)) {
+                 try { fs.unlinkSync(targetPath); } catch {}
+             }
             reject(new Error('Download request timed out'));
         });
     });
