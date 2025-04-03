@@ -2100,177 +2100,77 @@ app.get('/transcribe', async (req, res) => {
     }
 
     try {
-        // STEP 1: Get direct audio/video URL from ZM API
-        console.log(`[${requestId}] STEP 1: Getting direct media URL from ZM API`);
+        // STEP 1 & 2: Get audio download link from RapidAPI and download the audio
+        console.log(`[${requestId}] STEP 1 & 2: Getting audio URL from RapidAPI and downloading`);
 
-        // ZM API configuration
-        const zmApiKey = "hBsrDies";
-        const zmApiUrl = 'https://api.zm.io.vn/v1/social/autolink';
-        const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the provided key
+        const rapidApiHost = 'youtube-downloader-api-fast-reliable-and-easy.p.rapidapi.com';
+        const youtubeWatchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const rapidApiUrl = `https://${rapidApiHost}/fetch_audio?url=${encodeURIComponent(youtubeWatchUrl)}`;
 
-        // Make request to ZM API
-        const zmResponse = await fetch(zmApiUrl, {
-            method: 'POST',
-            headers: {
-                'apikey': zmApiKey,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ url: youtubeUrl })
-        });
-
-        if (!zmResponse.ok) {
-            throw new Error(`ZM API error: ${zmResponse.status} ${zmResponse.statusText}`);
-        }
-
-        const zmData = await zmResponse.json();
-
-        if (!zmData || !zmData.medias || !Array.isArray(zmData.medias)) {
-            throw new Error('Invalid data format received from ZM API');
-        }
-
-        console.log(`[${requestId}] ZM API responded with ${zmData.medias.length} media options`);
-
-        // Find the best audio format
-        let audioUrl = null;
-        let formatInfo = null;
-
-        // First try to find audio-only formats
-        const audioFormats = zmData.medias.filter(media =>
-            media.type === 'audio' || media.quality?.toLowerCase().includes('audio')
-        );
-
-        if (audioFormats.length > 0) {
-            formatInfo = audioFormats[0];
-            audioUrl = formatInfo.url;
-            console.log(`[${requestId}] Found audio format: ${formatInfo.quality || 'Unknown'}`);
-        } else {
-            // Try to find format 18 (360p MP4) first as it's commonly available
-            const format18 = zmData.medias.find(media => media.formatId === '18' && media.url);
-
-            if (format18) {
-                formatInfo = format18;
-                audioUrl = format18.url;
-                console.log(`[${requestId}] No audio format found, using MP4 format 18 (360p)`);
-            } else {
-                // Last resort: just use the first format with a URL
-                const anyFormat = zmData.medias.find(media => media.url);
-                if (anyFormat) {
-                    formatInfo = anyFormat;
-                    audioUrl = anyFormat.url;
-                    console.log(`[${requestId}] Using fallback format: ${anyFormat.quality || 'Unknown'}`);
-                }
-            }
-        }
-
-        if (!audioUrl) {
-            throw new Error('No suitable audio/video format found for transcription');
-        }
-
-        console.log(`[${requestId}] Selected media URL: ${audioUrl.substring(0, 50)}...`);
-
-        // STEP 2: DOWNLOAD THE AUDIO to our server (this is the critical part)
-        console.log(`[${requestId}] STEP 2: DOWNLOADING AUDIO FILE TO SERVER`);
-
-        // Create a unique temporary filename
-        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
-        console.log(`[${requestId}] Audio will be saved to: ${tempFileName}`);
-
-        // Use our own proxy to avoid CORS and YouTube restrictions
-        const proxyUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/proxy?url=${encodeURIComponent(audioUrl)}`;
-        console.log(`[${requestId}] Using proxy URL: ${proxyUrl}`);
+        let audioDownloadUrl;
+        let audioFileSize = 0;
+        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`); // Keep temp file logic
+        let zmData = { title: '', duration: 0 }; // Placeholder for title/duration
 
         try {
-            // FORCED DIRECT DOWNLOAD - still using our proxy but saving as file
-            const protocol = proxyUrl.startsWith('https') ? https : http;
-
-            // Create a promise for the download
-            await new Promise((resolve, reject) => {
-                const fileStream = fs.createWriteStream(tempFileName);
-
-                console.log(`[${requestId}] Starting direct file download through our proxy...`);
-
-                // Make the request explicitly
-                const request = protocol.get(proxyUrl, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0',
-                        'Accept': '*/*',
-                        'Origin': 'https://www.youtube.com', // Added to help with YouTube access
-                        'Referer': 'https://www.youtube.com/' // Added to help with YouTube access
-                    },
-                    timeout: 60000 // 60 seconds timeout
-                }, (response) => {
-                    // Check status code
-                    if (response.statusCode !== 200) {
-                        fileStream.close();
-                        fs.unlinkSync(tempFileName);
-                        return reject(new Error(`Download failed with status ${response.statusCode}`));
-                    }
-
-                    // Track download progress
-                    let downloadedBytes = 0;
-
-                    response.on('data', (chunk) => {
-                        downloadedBytes += chunk.length;
-                        if (downloadedBytes % 1000000 < chunk.length) { // Log every ~1MB
-                            console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB so far`);
-                        }
-                    });
-
-                    // Pipe response to the file
-                    response.pipe(fileStream);
-
-                    // Handle download completion
-                    fileStream.on('finish', () => {
-                        fileStream.close();
-
-                        // Verify file exists and has content
-                        const stats = fs.statSync(tempFileName);
-                        console.log(`[${requestId}] DOWNLOAD COMPLETED. File size: ${stats.size} bytes`);
-
-                        if (stats.size === 0) {
-                            fs.unlinkSync(tempFileName);
-                            return reject(new Error('Downloaded file is empty'));
-                        }
-
-                        resolve(stats.size);
-                    });
-
-                    // Handle streaming errors
-                    response.on('error', (err) => {
-                        fileStream.close();
-                        fs.unlinkSync(tempFileName);
-                        reject(err);
-                    });
-                });
-
-                // Handle request errors
-                request.on('error', (err) => {
-                    fileStream.close();
-                    fs.unlinkSync(tempFileName);
-                    reject(err);
-                });
-
-                // Handle timeout
-                request.on('timeout', () => {
-                    request.destroy();
-                    fileStream.close();
-                    fs.unlinkSync(tempFileName);
-                    reject(new Error('Download request timed out'));
-                });
+            console.log(`[${requestId}] Calling RapidAPI: ${rapidApiUrl}`);
+            const rapidApiResponse = await fetch(rapidApiUrl, {
+                method: 'GET',
+                headers: {
+                    'x-rapidapi-key': rapidApiKey,
+                    'x-rapidapi-host': rapidApiHost
+                },
+                timeout: 30000 // 30 second timeout
             });
 
-            // Verify the file one more time
-            const finalStats = fs.statSync(tempFileName);
-            if (finalStats.size === 0) {
-                throw new Error('Downloaded file is empty after verification');
+            if (!rapidApiResponse.ok) {
+                const errorText = await rapidApiResponse.text();
+                console.error(`[${requestId}] RapidAPI error: ${rapidApiResponse.status} ${rapidApiResponse.statusText}. Body: ${errorText}`);
+                throw new Error(`Failed to fetch audio info from RapidAPI: ${rapidApiResponse.status}`);
             }
 
-            console.log(`[${requestId}] Download success! File: ${tempFileName}, Size: ${finalStats.size} bytes`);
+            const rapidApiData = await rapidApiResponse.json();
+            console.log(`[${requestId}] RapidAPI Response:`, JSON.stringify(rapidApiData).substring(0, 200) + '...'); // Log truncated response
 
-        } catch (downloadError) {
-            console.error(`[${requestId}] CRITICAL ERROR DOWNLOADING AUDIO:`, downloadError);
-            throw new Error(`Failed to download audio: ${downloadError.message}`);
+            // Extract the download link and metadata (adjust based on actual API response structure)
+            // Assuming the response looks like { success: true, link: "...", title: "...", duration: ... }
+            if (!rapidApiData || !rapidApiData.success || !rapidApiData.link) {
+                 // Log the actual response if the structure is unexpected
+                console.error(`[${requestId}] Unexpected RapidAPI response structure:`, rapidApiData);
+                throw new Error('Invalid response structure from RapidAPI or download link missing.');
+            }
+            audioDownloadUrl = rapidApiData.link;
+            // Store title and duration if available from the API response
+            zmData.title = rapidApiData.title || `Video ${videoId}`;
+            zmData.duration = rapidApiData.duration || 0; // Assuming duration is in seconds
+
+            console.log(`[${requestId}] Received audio download URL from RapidAPI: ${audioDownloadUrl.substring(0, 100)}...`);
+            console.log(`[${requestId}] Title: ${zmData.title}, Duration: ${zmData.duration}s`);
+
+            // Now download the audio file using the obtained URL
+            console.log(`[${requestId}] Downloading audio from RapidAPI link to ${tempFileName}`);
+            audioFileSize = await downloadFile(audioDownloadUrl, tempFileName, requestId); // Use existing downloadFile helper
+
+            if (audioFileSize === 0) {
+                 fs.unlinkSync(tempFileName); // Clean up empty file
+                 throw new Error('Downloaded audio file is empty.');
+            }
+            console.log(`[${requestId}] Audio download successful. Size: ${audioFileSize} bytes`);
+
+        } catch (error) {
+            console.error(`[${requestId}] Error during RapidAPI fetch or download:`, error);
+            // Clean up temp file if it exists and the error occurred
+            if (fs.existsSync(tempFileName)) {
+                try {
+                    fs.unlinkSync(tempFileName);
+                } catch (cleanupError) {
+                    console.warn(`[${requestId}] Failed to cleanup temp file after error: ${cleanupError.message}`);
+                }
+            }
+            throw new Error(`Failed to get or download audio via RapidAPI: ${error.message}`);
         }
+        // The tempFileName now holds the downloaded audio, ready for STEP 3
 
         // STEP 3: Send to ElevenLabs for transcription
         console.log(`[${requestId}] STEP 3: SENDING TO ELEVENLABS FOR TRANSCRIPTION`);
