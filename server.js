@@ -1886,18 +1886,4 @@ async function sendMultipartFormRequest(url, formData, headers = {}) {
     });
 }
 
-<environment_details>
-# VSCode Visible Files
-server.js
-server.js
-server.js
-
-# VSCode Open Tabs
-server.js
-
-# Current Time
-4/3/2025, 7:42:25 PM (Asia/Jerusalem, UTC+3:00)
-
-# Current Mode
-ACT MODE
-</environment_details>
+// End of file
