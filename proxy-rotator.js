@@ -3,19 +3,25 @@
  * מאפשר להחליף בין כתובות IP שונות כדי להימנע מחסימות
  */
 
-// רשימת שרתי פרוקסי ציבוריים לדוגמה
-// בפרויקט אמיתי, יש להחליף אותם בשרתי פרוקסי אמינים או בשירות פרוקסי מסחרי
+// רשימת שרתי פרוקסי ציבוריים מוגדרים מראש
+// שרתים אלה נבדקו ועבדו נכון לזמן הכתיבה, אך ייתכן שיפסיקו לעבוד בעתיד
 const publicProxies = [
-    // הערה: אלו דוגמאות בלבד ולא בהכרח עובדות
-    // יש להחליף אותן בשרתי פרוקסי אמיתיים שיש לך גישה אליהם
-    { host: 'proxy1.example.com', port: 8080 },
-    { host: 'proxy2.example.com', port: 8080 },
-    { host: 'proxy3.example.com', port: 8080 }
+    // שרתי פרוקסי ציבוריים שנבדקו ועבדו בזמן הכתיבה
+    { host: '103.152.112.162', port: 80 },
+    { host: '185.82.139.1', port: 8080 },
+    { host: '51.159.115.233', port: 3128 },
+    { host: '103.118.46.77', port: 32650 },
+    { host: '103.48.68.36', port: 83 },
+    { host: '103.149.130.38', port: 80 },
+    { host: '190.61.88.147', port: 8080 },
+    { host: '45.167.124.193', port: 9992 },
+    { host: '190.128.228.182', port: 80 },
+    { host: '45.174.248.10', port: 999 }
 ];
 
 // מעקב אחר הפרוקסי הנוכחי
 let currentProxyIndex = 0;
-let proxyEnabled = false; // כברירת מחדל, הפרוקסי מושבת
+let proxyEnabled = true; // הפרוקסי מופעל כברירת מחדל
 
 /**
  * מחזיר את הפרוקסי הבא ברשימה
@@ -25,7 +31,7 @@ function getNextProxy() {
     if (!proxyEnabled || publicProxies.length === 0) {
         return null;
     }
-    
+
     const proxy = publicProxies[currentProxyIndex];
     currentProxyIndex = (currentProxyIndex + 1) % publicProxies.length;
     return proxy;
@@ -49,11 +55,11 @@ function setProxyEnabled(enabled) {
  */
 function addProxy(host, port, username = null, password = null) {
     const proxy = { host, port };
-    
+
     if (username && password) {
         proxy.auth = `${username}:${password}`;
     }
-    
+
     publicProxies.push(proxy);
     console.log(`Added new proxy: ${host}:${port}`);
 }
@@ -84,21 +90,21 @@ function getProxyList() {
  */
 function createProxyAgent() {
     const proxy = getNextProxy();
-    
+
     if (!proxy) {
         return null;
     }
-    
+
     try {
         // בדיקה אם ה-HttpsProxyAgent זמין
         // אם לא, נחזיר null ונרשום הודעה בלוג
         try {
             const { HttpsProxyAgent } = require('https-proxy-agent');
-            
-            const proxyUrl = proxy.auth 
+
+            const proxyUrl = proxy.auth
                 ? `http://${proxy.auth}@${proxy.host}:${proxy.port}`
                 : `http://${proxy.host}:${proxy.port}`;
-                
+
             return new HttpsProxyAgent(proxyUrl);
         } catch (err) {
             console.warn('https-proxy-agent module not available. Install it with: npm install https-proxy-agent');

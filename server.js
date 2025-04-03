@@ -133,7 +133,7 @@ const proxyRotator = require('./proxy-rotator');
 // Add a YouTube-specific fetch helper
 async function fetchFromYouTube(url, options, maxRetries = 3) {
     // הוסף requestId כפרמטר לפונקציה
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
     // יצירת מזהה סשן קבוע לבקשה הנוכחית (לשימוש עקבי ב-headers)
     const sessionId = Date.now().toString(36);
@@ -285,7 +285,7 @@ app.get('/proxy', async (req, res) => {
     totalBytesStreamed = 0;
 
     // Add request ID for tracking
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
     console.log(`[${requestId}] Processing request for: ${videoUrl.substring(0, 100)}...`);
 
     // Set up keepalive checker for the client connection
@@ -566,7 +566,7 @@ app.get('/proxy', async (req, res) => {
 // Simplified download endpoint using only RapidAPI for audio
 app.get('/download', async (req, res) => {
     const videoId = req.query.id;
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
     if (!videoId) {
         return res.status(400).json({
@@ -730,8 +730,7 @@ app.get('/proxy-manager', (req, res) => {
     }
 });
 
-// Pre-calculate rate limit in seconds for the template literal
-const rateLimitSeconds = RATE_LIMIT_WINDOW / 1000;
+// הערה: הסרנו את המשתנה rateLimitSeconds שלא היה בשימוש
 
 // Update the main page HTML to add a transcription option
 app.get('/', (req, res) => {
@@ -1175,7 +1174,7 @@ app.get('/', (req, res) => {
 
                     <div class="note">
                         <p><strong>הערות:</strong></p>
-                        <p>1. הגבלת קצב בתוקף. מקסימום ${RATE_LIMIT_MAX} בקשות לכל כתובת IP בכל ${rateLimitSeconds} שניות.</p>
+                        <p>1. הגבלת קצב בתוקף. מקסימום 10 בקשות לכל כתובת IP בכל 60 שניות.</p>
                         <p>2. תמלול עשוי להימשך מספר דקות, בהתאם לאורך הסרטון.</p>
                         <p>3. שרת זה נועד למטרות לימודיות בלבד.</p>
                     </div>
@@ -1327,7 +1326,7 @@ app.get('/', (req, res) => {
 
                                     // Update preview with basic info (title/duration might come from transcribe response later if needed)
                                     transcribeThumbnail.src = 'https://via.placeholder.com/120x68.png?text=Transcribed'; // Placeholder
-                                    transcribeVideoTitle.textContent = `Transcribed Video ID: ${videoId}`; // Use ID as title for now
+                                    transcribeVideoTitle.textContent = 'Transcribed Video ID: ' + videoId; // Use ID as title for now
                                     transcribeVideoDuration.textContent = ''; // Clear duration
 
                                     // Show transcript preview
@@ -1354,7 +1353,7 @@ app.get('/', (req, res) => {
 
                                     // Update preview with info from response
                                     transcribeThumbnail.src = 'https://via.placeholder.com/120x68.png?text=Transcribed'; // Placeholder, API doesn't provide thumbnail
-                                    transcribeVideoTitle.textContent = transcriptInfo.title || `Video ID: ${videoId}`;
+                                    transcribeVideoTitle.textContent = transcriptInfo.title || ('Video ID: ' + videoId);
 
                                     // Format duration if available
                                     const durationSeconds = transcriptInfo.duration || 0;
@@ -1490,7 +1489,15 @@ app.listen(PORT, () => {
     console.log('  - GET /transcribe?id=VIDEO_ID&format=FORMAT  Transcribe video');
     console.log('  - GET /health                                Health check');
     console.log('  - GET /test-proxy?url=URL                    Test proxy');
+    console.log('  - GET /proxy-manager?password=proxy123&action=ACTION  Manage proxies');
     console.log('----------------------------------------------------');
+
+    // הדפסת הודעה שמציינת שמנגנון הפרוקסי מופעל
+    console.log('\n=== מנגנון התגברות על חסימות יוטיוב מופעל ===');
+    console.log('משתמש ב-headers מתקדמים וסיבוב פרוקסי אוטומטי');
+    console.log(`מספר שרתי פרוקסי מוגדרים: ${proxyRotator.getProxyList().length}`);
+    console.log('ניתן לנהל את הפרוקסי דרך נקודת הקצה /proxy-manager');
+    console.log('=== מערכת מוכנה לשימוש ===\n');
 });
 
 // Add health check endpoint to verify server is running
@@ -1499,44 +1506,72 @@ app.get('/health', (req, res) => {
     return res.status(200).json({
         status: 'OK',
         timestamp: new Date().toISOString(),
-        endpoints: ['/proxy', '/transcribe', '/download'] // Removed /youtube-info
+        endpoints: ['/proxy', '/transcribe', '/download', '/proxy-manager', '/test-proxy'],
+        proxy: {
+            enabled: proxyRotator.getProxyList().length > 0,
+            count: proxyRotator.getProxyList().length
+        }
     });
 });
 
 // Add debug endpoint to test proxy functionality
 app.get('/test-proxy', async (req, res) => {
-    const testUrl = req.query.url || 'https://www.google.com/favicon.ico';
-    const requestId = Date.now().toString(36);
-
-    console.log(`[${requestId}] Testing proxy with URL: ${testUrl}`);
+    const url = req.query.url || 'https://api.ipify.org?format=json';
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
 
     try {
-        const proxyUrl = `http${req.secure ? 's' : ''}://${req.headers.host}/proxy?url=${encodeURIComponent(testUrl)}`;
-        console.log(`[${requestId}] Constructed proxy URL: ${proxyUrl}`);
+        console.log(`[${requestId}] Testing proxy with URL: ${url}`);
 
-        const response = await fetch(proxyUrl);
+        // יצירת אפשרויות עם פרוקסי
+        const fetchOptions = {
+            headers: headersManager.generateAdvancedHeaders({
+                isYouTubeRequest: url.includes('youtube.com')
+            }),
+            timeout: 10000
+        };
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Proxy test failed: ${response.status} ${response.statusText}. Body: ${errorText}`);
+        // הוספת פרוקסי אם הוא מופעל
+        const proxyAgent = proxyRotator.createProxyAgent();
+        if (proxyAgent) {
+            fetchOptions.agent = proxyAgent;
+            console.log(`[${requestId}] Using proxy for this test request`);
+        } else {
+            console.log(`[${requestId}] No proxy used for this test request`);
         }
 
-        const data = await response.buffer();
+        // שליחת הבקשה
+        const response = await fetch(url, fetchOptions);
+        const data = await response.text();
 
-        res.json({
+        // ניסיון לפרסר כ-JSON אם אפשר
+        let jsonData;
+        try {
+            jsonData = JSON.parse(data);
+        } catch (e) {
+            jsonData = null;
+        }
+
+        return res.json({
             success: true,
-            url: testUrl,
-            proxyUrl: proxyUrl,
+            url: url,
             status: response.status,
-            contentType: response.headers.get('content-type'),
-            contentLength: data.length,
-            message: `Successfully proxied ${data.length} bytes`
+            headers: Object.fromEntries(response.headers.entries()),
+            data: jsonData || data.substring(0, 500),
+            proxy: {
+                used: !!proxyAgent,
+                count: proxyRotator.getProxyList().length
+            }
         });
     } catch (error) {
         console.error(`[${requestId}] Test proxy error:`, error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            error: `Test failed: ${error.message}`
+            error: error.message,
+            url: url,
+            proxy: {
+                used: proxyRotator.getProxyList().length > 0,
+                count: proxyRotator.getProxyList().length
+            }
         });
     }
 });
@@ -1545,7 +1580,7 @@ app.get('/test-proxy', async (req, res) => {
 app.get('/transcribe', async (req, res) => {
     const videoId = req.query.id;
     const format = req.query.format || 'json'; // 'json', 'srt', or 'txt'
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
     console.log(`[${requestId}] ========== STARTING TRANSCRIPTION PROCESS ==========`);
     console.log(`[${requestId}] Video ID: ${videoId}, format: ${format}`);
