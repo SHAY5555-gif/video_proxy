@@ -126,21 +126,51 @@ async function fetchWithRetries(url, options, maxRetries = 3) {
     throw lastError || new Error('Failed to fetch after multiple attempts');
 }
 
+// מייבא את מנהל ה-headers המשופר ואת מנהל הפרוקסי
+const headersManager = require('./headers-manager');
+const proxyRotator = require('./proxy-rotator');
+
 // Add a YouTube-specific fetch helper
 async function fetchFromYouTube(url, options, maxRetries = 3) {
     // הוסף requestId כפרמטר לפונקציה
     const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 
-    // YouTube-specific error fix: Sometimes YouTube needs a proper referer and origin
-    const youtubeOptions = {
-        ...options,
-        headers: {
-            ...options.headers,
-            'Referer': 'https://www.youtube.com/',
-            'Origin': 'https://www.youtube.com'
-        },
-        // Set a timeout of 15 seconds for the fetch operation
-        timeout: 15000 // 15 second timeout before aborting
+    // יצירת מזהה סשן קבוע לבקשה הנוכחית (לשימוש עקבי ב-headers)
+    const sessionId = Date.now().toString(36);
+
+    // YouTube-specific error fix: יצירת headers מתקדמים שנראים כמו דפדפן אמיתי
+    // בכל ניסיון נשתמש ב-headers שונים במקצת כדי להקשות על זיהוי
+    const getYouTubeOptions = () => {
+        // שמירה על User-Agent עקבי לאורך ניסיונות חוזרים באותה בקשה
+        // אבל שונה בין בקשות שונות
+        const baseUserAgent = options.headers?.['User-Agent'] ||
+                             headersManager.getRandomValue(headersManager.userAgents);
+
+        // יצירת headers מתקדמים עם אקראיות מבוקרת
+        const advancedHeaders = headersManager.generateYouTubeHeaders({
+            userAgent: baseUserAgent,
+            rangeHeader: options.headers?.['Range'],
+            // שימוש ב-referer ו-origin אקראיים אבל עקביים לאורך הניסיונות
+            referer: `https://www.youtube.com/watch?v=${sessionId}`,
+            origin: 'https://www.youtube.com'
+        });
+
+        // יצירת אובייקט האפשרויות הבסיסי
+        const youtubeOptions = {
+            ...options,
+            headers: advancedHeaders,
+            // Set a timeout of 15 seconds for the fetch operation
+            timeout: 15000 // 15 second timeout before aborting
+        };
+
+        // הוספת פרוקסי אם הוא מופעל
+        const proxyAgent = proxyRotator.createProxyAgent();
+        if (proxyAgent) {
+            youtubeOptions.agent = proxyAgent;
+            console.log(`[${requestId}] Using proxy for this request`);
+        }
+
+        return youtubeOptions;
     };
 
     let lastError;
@@ -157,9 +187,26 @@ async function fetchFromYouTube(url, options, maxRetries = 3) {
                 console.log(`[${requestId}] Processing YouTube video URL`);
             }
 
+            // יצירת אפשרויות חדשות עם headers מעט שונים בכל ניסיון
+            const youtubeOptions = getYouTubeOptions();
+
             // הוסף יותר לוגים
             console.log(`[${requestId}] Full URL being fetched: ${url}`);
-            console.log(`[${requestId}] YouTube options: ${JSON.stringify(youtubeOptions, null, 2)}`);
+            // הסתרת פרטי ה-headers המלאים מהלוגים למניעת דליפת מידע
+            const sanitizedOptions = {
+                ...youtubeOptions,
+                headers: {
+                    'User-Agent': youtubeOptions.headers['User-Agent'].substring(0, 30) + '...',
+                    'Other-Headers': 'Hidden for security'
+                }
+            };
+            console.log(`[${requestId}] YouTube options: ${JSON.stringify(sanitizedOptions, null, 2)}`);
+
+            // הוספת השהייה אקראית קטנה לפני הבקשה כדי לדמות התנהגות אנושית
+            if (attempt > 1) {
+                const randomDelay = Math.floor(Math.random() * 500) + 100; // 100-600ms
+                await setTimeout(randomDelay);
+            }
 
             const response = await fetch(url, youtubeOptions);
 
@@ -286,26 +333,24 @@ app.get('/proxy', async (req, res) => {
 
         console.log(`[${requestId}] URL identified as ${isYouTubeUrl ? 'YouTube' : 'generic'} URL`);
 
-        // Modify fetch options to include range if requested
+        // שימוש במנהל ה-headers המשופר ליצירת headers מתקדמים
         const fetchOptions = {
-            headers: {
-                'User-Agent': userAgent,
-                'Accept': '*/*',
-                'Accept-Encoding': 'identity',  // Important for YouTube
-                'Connection': 'keep-alive',
-                'Referer': 'https://www.youtube.com/' // Try adding referer
-            }
+            headers: headersManager.generateAdvancedHeaders({
+                userAgent: userAgent,
+                rangeHeader: rangeHeader || 'bytes=0-',
+                isYouTubeRequest: isYouTubeUrl
+            })
         };
 
-        // Add range header if present in original request
-        if (rangeHeader) {
-            fetchOptions.headers['Range'] = rangeHeader;
-        } else {
-            // Default to start from beginning
-            fetchOptions.headers['Range'] = 'bytes=0-';
-        }
+        // הוספת לוג מוסתר של ה-headers (ללא חשיפת כל הפרטים)
+        const sanitizedHeaders = {
+            'User-Agent': fetchOptions.headers['User-Agent'].substring(0, 30) + '...',
+            'Accept': fetchOptions.headers['Accept'],
+            'Range': fetchOptions.headers['Range'],
+            'Other-Headers': '(hidden for security)'
+        };
 
-        console.log(`[${requestId}] Fetch options:`, JSON.stringify(fetchOptions, null, 2));
+        console.log(`[${requestId}] Fetch options:`, JSON.stringify({...fetchOptions, headers: sanitizedHeaders}, null, 2));
 
         // Use YouTube-specific fetch for YouTube URLs, regular fetch otherwise
         const response = isYouTubeUrl
@@ -920,12 +965,15 @@ app.get('/download', async (req, res) => {
         `);
 
         // Set up client response
+        // Construct the proxy URL *before* creating the HTML response
+        const proxyDownloadUrl = `/proxy?url=${encodeURIComponent(downloadUrl)}`;
+
         const htmlResponse = fallbackMessage ? `
             <html>
                 <head>
                     <title>הורדה בפורמט חלופי</title>
                     <meta charset="UTF-8">
-                    <meta http-equiv="refresh" content="3;url=${downloadUrl}">
+                    <meta http-equiv="refresh" content="3;url=${proxyDownloadUrl}">
                     <style>
                         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f0f0f0; text-align: center; direction: rtl; }
                         .container { max-width: 700px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -952,83 +1000,45 @@ app.get('/download', async (req, res) => {
                             <p><strong>איכות:</strong> ${qualityInfo || 'לא צוין'}</p>
                         </div>
                         <p>אם ההורדה לא מתחילה אוטומטית, לחץ על הכפתור:</p>
-                        <a href="${downloadUrl}" class="download-btn">התחל הורדה</a>
+                        <a href="${proxyDownloadUrl}" class="download-btn">התחל הורדה</a>
                     </div>
                     <script>
-                        setTimeout(function() {
-                            window.location.href = "${downloadUrl}";
-                        }, 3000);
+                        // The meta refresh tag already handles the redirect
+                        // setTimeout(function() {
+                        //     window.location.href = "${proxyDownloadUrl}";
+                        // }, 3000);
                     </script>
                 </body>
             </html>
         ` : null;
 
-        // *** START: MODIFIED SECTION FOR SERVER-SIDE DOWNLOAD ***
-        // Download the file through our server and pipe it to the client
+        // Instead of redirecting, download the file through our server and pipe it to the client
         try {
-            console.log(`[${requestId}] Starting server-side download and stream from: ${downloadUrl.substring(0, 100)}...`);
+            console.log(`[${requestId}] Starting direct download of file from: ${downloadUrl}`);
 
             // Set appropriate headers for file download
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
 
-            // Determine if it's a YouTube URL to use the correct fetch helper
-            const isYouTubeUrl = downloadUrl.includes('googlevideo.com') ||
-                                 downloadUrl.includes('youtube.com') ||
-                                 downloadUrl.includes('youtu.be');
-
-            const fetchOptions = {
-                headers: {
-                    'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-                    'Accept': '*/*',
-                    'Accept-Encoding': 'identity', // Important for YouTube
-                    'Connection': 'keep-alive',
-                    'Referer': 'https://www.youtube.com/'
-                }
-            };
-
-            // Fetch the actual media file
-            const response = isYouTubeUrl
-                ? await fetchFromYouTube(downloadUrl, fetchOptions)
-                : await fetchWithRetries(downloadUrl, fetchOptions);
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch download URL: ${response.status} ${response.statusText}`);
+            // If we have fallback info, show it first before starting download
+            if (htmlResponse) {
+                console.log(`[${requestId}] Showing fallback info page with 3-second countdown`);
+                res.send(htmlResponse);
+                return; // End the request here, user will be redirected by the HTML page
             }
 
-            // Copy content type header
-            const contentType = response.headers.get('content-type');
-            if (contentType) {
-                res.setHeader('Content-Type', contentType);
-            } else {
-                res.setHeader('Content-Type', 'application/octet-stream'); // Default if not provided
-            }
+            console.log(`[${requestId}] Redirecting to proxy URL: ${proxyDownloadUrl}`);
 
-            // Copy content length if available (helps browser show progress)
-            const contentLength = response.headers.get('content-length');
-            if (contentLength) {
-                res.setHeader('Content-Length', contentLength);
-            }
+            // Set appropriate headers for file download (already set before the inner try)
+            // res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`); // Already set
 
-            console.log(`[${requestId}] Piping response body to client...`);
+            // Redirect to the PROXY URL
+            return res.redirect(302, proxyDownloadUrl);
+        } catch (error) {
+            console.error(`[${requestId}] Error during redirect setup:`, error); // Changed error context message
 
-            // Pipe the response body directly to the client response
-            response.body.pipe(res).on('finish', () => {
-                console.log(`[${requestId}] Stream finished successfully.`);
-            }).on('error', (streamError) => {
-                console.error(`[${requestId}] Error piping stream:`, streamError);
-                // Try to end the response if it hasn't already finished
-                if (!res.writableEnded) {
-                    res.end();
-                }
-            });
-
-        } catch (error) { // Inner catch for download/stream errors
-            console.error(`[${requestId}] Server-side download/stream error:`, error);
-
-            // Return a user-friendly HTML error page if headers haven't been sent
-            if (!res.headersSent) {
-                const errorFormat = format || 'audio'; // Default to audio if format is undefined
-                res.status(500).send(`
+            // Return a user-friendly HTML error page
+            const errorFormat = format || 'audio'; // Default to audio if format is undefined
+            res.status(500).send(`
             <html>
                 <head>
                     <title>שגיאת הורדה</title>
@@ -1066,9 +1076,7 @@ app.get('/download', async (req, res) => {
                 </body>
             </html>
         `);
-            } // Closes if (!res.headersSent)
         } // Closes inner catch block
-        // *** END: MODIFIED SECTION FOR SERVER-SIDE DOWNLOAD ***
 
     } catch (error) { // Outer catch for info fetching/format selection errors
         console.error(`[${requestId}] Initial download setup error:`, error);
@@ -1139,6 +1147,46 @@ setInterval(() => {
         requestCounts[ip] = 0;
     });
 }, RATE_LIMIT_WINDOW);
+
+// הוספת נקודת קצה לניהול הפרוקסי (מוגנת בסיסמה פשוטה)
+app.get('/proxy-manager', (req, res) => {
+    // בדיקת סיסמה פשוטה (יש להחליף במנגנון אבטחה חזק יותר בסביבת ייצור)
+    const password = req.query.password;
+    if (password !== 'proxy123') {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const action = req.query.action;
+
+    switch (action) {
+        case 'enable':
+            proxyRotator.setProxyEnabled(true);
+            return res.json({ success: true, message: 'Proxy rotation enabled' });
+
+        case 'disable':
+            proxyRotator.setProxyEnabled(false);
+            return res.json({ success: true, message: 'Proxy rotation disabled' });
+
+        case 'add':
+            const { host, port, username, password } = req.query;
+            if (!host || !port) {
+                return res.status(400).json({ error: 'Missing host or port' });
+            }
+            proxyRotator.addProxy(host, parseInt(port), username, password);
+            return res.json({ success: true, message: 'Proxy added' });
+
+        case 'clear':
+            proxyRotator.clearProxies();
+            return res.json({ success: true, message: 'All proxies cleared' });
+
+        case 'list':
+            const proxies = proxyRotator.getProxyList();
+            return res.json({ success: true, proxies });
+
+        default:
+            return res.status(400).json({ error: 'Invalid action', validActions: ['enable', 'disable', 'add', 'clear', 'list'] });
+    }
+});
 
 // Update the main page HTML to add a transcription option
 app.get('/', (req, res) => {
