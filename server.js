@@ -702,6 +702,7 @@ app.get('/download', async (req, res) => {
         });
     }
 
+    // Outer try block for initial info fetching and format selection
     try {
         console.log(`[${requestId}] Download request for video ID: ${videoId}, format: ${format}`);
 
@@ -962,172 +963,72 @@ app.get('/download', async (req, res) => {
             </html>
         ` : null;
 
-        // Instead of redirecting, download the file through our server and pipe it to the client
+        // *** START: MODIFIED SECTION FOR SERVER-SIDE DOWNLOAD ***
+        // Download the file through our server and pipe it to the client
         try {
-            console.log(`[${requestId}] Starting direct download of file from: ${downloadUrl}`);
+            console.log(`[${requestId}] Starting server-side download and stream from: ${downloadUrl.substring(0, 100)}...`);
 
             // Set appropriate headers for file download
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
 
-            // If we have fallback info, show it first before starting download
-            if (htmlResponse) {
-                console.log(`[${requestId}] Showing fallback info page with 3-second countdown`);
-                res.send(htmlResponse);
-                return; // End the request here, user will be redirected by the HTML page
+            // Determine if it's a YouTube URL to use the correct fetch helper
+            const isYouTubeUrl = downloadUrl.includes('googlevideo.com') ||
+                                 downloadUrl.includes('youtube.com') ||
+                                 downloadUrl.includes('youtu.be');
+
+            const fetchOptions = {
+                headers: {
+                    'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
+                    'Accept': '*/*',
+                    'Accept-Encoding': 'identity', // Important for YouTube
+                    'Connection': 'keep-alive',
+                    'Referer': 'https://www.youtube.com/'
+                }
+            };
+
+            // Fetch the actual media file
+            const response = isYouTubeUrl
+                ? await fetchFromYouTube(downloadUrl, fetchOptions)
+                : await fetchWithRetries(downloadUrl, fetchOptions);
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch download URL: ${response.status} ${response.statusText}`);
             }
 
-            // Instead of saving to a temporary file, pipe directly to the client
-            console.log(`[${requestId}] Starting direct download of file: ${downloadUrl}`);
-
-            // Create a request to the download URL
-            const parsedUrl = new URL(downloadUrl);
-            const protocol = parsedUrl.protocol === 'https:' ? https : http;
-
-            // Make the request
-            const downloadRequest = protocol.get(downloadUrl, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                        'Accept': '*/*',
-                        'Accept-Encoding': 'identity',
-                        'Connection': 'keep-alive',
-                        'Referer': 'https://www.youtube.com/'
-                    }
-                }, (downloadResponse) => {
-                    // Handle redirects
-                    if (downloadResponse.statusCode === 301 || downloadResponse.statusCode === 302) {
-                        const redirectUrl = downloadResponse.headers.location;
-                        if (!redirectUrl) {
-                            fileStream.close();
-                            return res.status(500).send('Redirect without location header');
-                        }
-
-                        console.log(`[${requestId}] Following redirect to: ${redirectUrl}`);
-                        fileStream.close();
-
-                        // Try again with the new URL
-                        const newDownloadUrl = new URL(redirectUrl, downloadUrl).toString();
-                        console.log(`[${requestId}] Resolved redirect URL: ${newDownloadUrl}`);
-
-                        // Instead of redirecting, we'll use a pipe stream directly
-                        console.log(`[${requestId}] Piping redirect URL directly to client`);
-
-                        // Create a new request to the redirect URL
-                        const redirectProtocol = newDownloadUrl.startsWith('https:') ? https : http;
-
-                        // Set appropriate headers for file download
-                        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-
-                        // Make a new request to the redirect URL and pipe it directly to the response
-                        redirectProtocol.get(newDownloadUrl, {
-                            headers: {
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                                'Accept': '*/*',
-                                'Accept-Encoding': 'identity',
-                                'Connection': 'keep-alive',
-                                'Referer': 'https://www.youtube.com/'
-                            }
-                        }, (redirectResponse) => {
-                            // Copy content type and other relevant headers
-                            if (redirectResponse.headers['content-type']) {
-                                res.setHeader('Content-Type', redirectResponse.headers['content-type']);
-                            }
-
-                            if (redirectResponse.headers['content-length']) {
-                                res.setHeader('Content-Length', redirectResponse.headers['content-length']);
-                            }
-
-                            // Pipe the redirect response directly to our response
-                            redirectResponse.pipe(res);
-
-                            // Handle download completion
-                            redirectResponse.on('end', () => {
-                                console.log(`[${requestId}] Download completed and sent to client`);
-                            });
-
-                            // Handle errors during streaming
-                            redirectResponse.on('error', (err) => {
-                                console.error(`[${requestId}] Error during redirect streaming:`, err);
-                                if (!res.headersSent) {
-                                    res.status(500).send(`Error during download: ${err.message}`);
-                                } else {
-                                    res.end();
-                                }
-                            });
-                        }).on('error', (err) => {
-                            console.error(`[${requestId}] Error connecting to redirect URL:`, err);
-                            res.status(500).send(`Error connecting to redirect URL: ${err.message}`);
-                        });
-
-                        return;
-                    }
-
-                    // Check if the response is successful
-                    if (downloadResponse.statusCode !== 200) {
-                        fileStream.close();
-                        return res.status(downloadResponse.statusCode).send(`Error downloading file: ${downloadResponse.statusCode} ${downloadResponse.statusMessage}`);
-                    }
-
-                    // Copy content type and other relevant headers
-                    if (downloadResponse.headers['content-type']) {
-                        res.setHeader('Content-Type', downloadResponse.headers['content-type']);
-                    } else {
-                        // Set default content type based on format
-                        res.setHeader('Content-Type', format === 'audio' ? 'audio/mpeg' : 'video/mp4');
-                    }
-
-                    if (downloadResponse.headers['content-length']) {
-                        res.setHeader('Content-Length', downloadResponse.headers['content-length']);
-                    }
-
-                    // Pipe the download response directly to our response
-                    downloadResponse.pipe(res);
-
-                    // Handle download completion
-                    downloadResponse.on('end', () => {
-                        console.log(`[${requestId}] Download completed and sent to client`);
-                    });
-
-                    // Handle errors during streaming
-                    downloadResponse.on('error', (err) => {
-                        console.error(`[${requestId}] Error during streaming:`, err);
-                        if (!res.headersSent) {
-                            res.status(500).send(`Error during download: ${err.message}`);
-                        } else {
-                            res.end();
-                        }
-                    });
-                });
-
-                // Handle request errors
-                downloadRequest.on('error', (err) => {
-                    console.error(`[${requestId}] Error during download request:`, err);
-                    if (!res.headersSent) {
-                        res.status(500).send(`Error downloading file: ${err.message}`);
-                    } else {
-                        res.end();
-                    }
-                });
-
-                // Set a timeout for the request
-                downloadRequest.setTimeout(60000, () => {
-                    downloadRequest.destroy();
-                    if (!res.headersSent) {
-                        res.status(504).send('Download request timed out');
-                    } else {
-                        res.end();
-                    }
-                });
-            } catch (error) {
-                console.error(`[${requestId}] Error setting up download:`, error);
-                res.status(500).send(`Error setting up download: ${error.message}`);
+            // Copy content type header
+            const contentType = response.headers.get('content-type');
+            if (contentType) {
+                res.setHeader('Content-Type', contentType);
+            } else {
+                res.setHeader('Content-Type', 'application/octet-stream'); // Default if not provided
             }
 
-        } catch (error) {
-            console.error(`[${requestId}] Download error:`, error);
+            // Copy content length if available (helps browser show progress)
+            const contentLength = response.headers.get('content-length');
+            if (contentLength) {
+                res.setHeader('Content-Length', contentLength);
+            }
 
-            // Return a user-friendly HTML error page
-            const errorFormat = format || 'audio'; // Default to audio if format is undefined
-            res.status(500).send(`
+            console.log(`[${requestId}] Piping response body to client...`);
+
+            // Pipe the response body directly to the client response
+            response.body.pipe(res).on('finish', () => {
+                console.log(`[${requestId}] Stream finished successfully.`);
+            }).on('error', (streamError) => {
+                console.error(`[${requestId}] Error piping stream:`, streamError);
+                // Try to end the response if it hasn't already finished
+                if (!res.writableEnded) {
+                    res.end();
+                }
+            });
+
+        } catch (error) { // Inner catch for download/stream errors
+            console.error(`[${requestId}] Server-side download/stream error:`, error);
+
+            // Return a user-friendly HTML error page if headers haven't been sent
+            if (!res.headersSent) {
+                const errorFormat = format || 'audio'; // Default to audio if format is undefined
+                res.status(500).send(`
             <html>
                 <head>
                     <title>שגיאת הורדה</title>
@@ -1165,8 +1066,57 @@ app.get('/download', async (req, res) => {
                 </body>
             </html>
         `);
-    }
-});
+            } // Closes if (!res.headersSent)
+        } // Closes inner catch block
+        // *** END: MODIFIED SECTION FOR SERVER-SIDE DOWNLOAD ***
+
+    } catch (error) { // Outer catch for info fetching/format selection errors
+        console.error(`[${requestId}] Initial download setup error:`, error);
+        // Return a user-friendly HTML error page if headers haven't been sent
+        if (!res.headersSent) {
+            const errorFormat = format || 'audio'; // Default to audio if format is undefined
+            res.status(500).send(`
+            <html>
+                <head>
+                    <title>שגיאת הורדה</title>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f0f0f0; text-align: right; direction: rtl; }
+                        .container { max-width: 600px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        h1 { color: #c00; margin-top: 0; }
+                        .back-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #c00; color: white; text-decoration: none; border-radius: 4px; }
+                        .back-btn:hover { background: #900; }
+                        .retry-btn { display: inline-block; margin-top: 20px; margin-right: 10px; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px; }
+                        .retry-btn:hover { background: #0b7dda; }
+                        .error-details { background: #ffe6e6; padding: 15px; border-radius: 4px; margin-top: 20px; }
+                        code { background: #f8f8f8; padding: 2px 5px; border-radius: 3px; font-family: monospace; direction: ltr; display: inline-block; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>שגיאה בהכנת ההורדה</h1>
+                        <p>${error.message || 'שגיאה לא ידועה התרחשה בעת ניסיון להכין את ההורדה'}</p>
+
+                        <div class="error-details">
+                            <p><strong>מזהה סרטון:</strong> <code>${videoId}</code></p>
+                            <p><strong>פורמט שנבחר:</strong> ${errorFormat}</p>
+                            <p><strong>מזהה בקשה:</strong> <code>${requestId}</code></p>
+                            <p><strong>זמן השגיאה:</strong> ${new Date().toLocaleString('he-IL')}</p>
+                        </div>
+
+                        <p>אפשר לנסות שוב:</p>
+                        <a href="/download?id=${videoId}&format=${errorFormat}" class="retry-btn">
+                            נסה שוב
+                        </a>
+                        <a href="/" class="back-btn">חזרה לדף הראשי</a>
+                    </div>
+                </body>
+            </html>
+        `);
+        } // Closes if (!res.headersSent) for outer catch
+    } // Closes outer catch block
+}); // Closes app.get('/download', ...)
+
 
 // Helper function to format file size
 function formatFileSize(bytes) {
