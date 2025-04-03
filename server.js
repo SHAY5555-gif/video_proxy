@@ -1019,14 +1019,13 @@ app.get('/download', async (req, res) => {
 
                         // Try again with the new URL
                         const newDownloadUrl = new URL(redirectUrl, downloadUrl).toString();
-                        http.get(newDownloadUrl, (redirectResponse) => {
-                            redirectResponse.pipe(fileStream);
-                        }).on('error', (err) => {
-                            fileStream.close();
-                            console.error(`[${requestId}] Error following redirect:`, err);
-                            res.status(500).send(`Error following redirect: ${err.message}`);
-                        });
-                        return;
+                        console.log(`[${requestId}] Resolved redirect URL: ${newDownloadUrl}`);
+
+                        // For simplicity, let's just redirect the client directly to the URL
+                        // This avoids issues with multiple redirects and file stream handling
+                        console.log(`[${requestId}] Redirecting client directly to the download URL`);
+                        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+                        return res.redirect(302, newDownloadUrl);
                     }
 
                     // Check if the response is successful
