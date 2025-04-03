@@ -544,7 +544,7 @@ app.get('/proxy', async (req, res) => {
             });
         } else {
             // Log as much detail as possible about the error
-            console.error('[${requestId}] Unhandled error details:', {
+            console.error(`[${requestId}] Unhandled error details:`, {
                 message: err.message,
                 name: err.name,
                 code: err.code,
@@ -560,7 +560,7 @@ app.get('/proxy', async (req, res) => {
                 solution: 'Try refreshing the page to get a fresh URL or try a different video'
             });
         }
-    } // This closing brace likely belongs to the /proxy endpoint's catch block
+    }
 });
 
 // Simplified download endpoint using only RapidAPI for audio
@@ -729,6 +729,9 @@ app.get('/proxy-manager', (req, res) => {
             return res.status(400).json({ error: 'Invalid action', validActions: ['enable', 'disable', 'add', 'clear', 'list'] });
     }
 });
+
+// Pre-calculate rate limit in seconds for the template literal
+const rateLimitSeconds = RATE_LIMIT_WINDOW / 1000;
 
 // Update the main page HTML to add a transcription option
 app.get('/', (req, res) => {
@@ -1172,7 +1175,7 @@ app.get('/', (req, res) => {
 
                     <div class="note">
                         <p><strong>הערות:</strong></p>
-                        <p>1. הגבלת קצב בתוקף. מקסימום ${RATE_LIMIT_MAX} בקשות לכל כתובת IP בכל ${RATE_LIMIT_WINDOW/1000} שניות.</p>
+                        <p>1. הגבלת קצב בתוקף. מקסימום ${RATE_LIMIT_MAX} בקשות לכל כתובת IP בכל ${rateLimitSeconds} שניות.</p>
                         <p>2. תמלול עשוי להימשך מספר דקות, בהתאם לאורך הסרטון.</p>
                         <p>3. שרת זה נועד למטרות לימודיות בלבד.</p>
                     </div>
@@ -1199,10 +1202,10 @@ app.get('/', (req, res) => {
                         });
 
                         // Simplified Download form functionality
-                        const downloadForm = document.getElementById('download-form'),
-                        downloadUrlInput = document.getElementById('download-url'),
-                        downloadErrorBox = document.getElementById('download-error-box'),
-                        downloadLoading = document.getElementById('download-loading');
+                        const downloadForm = document.getElementById('download-form');
+                        const downloadUrlInput = document.getElementById('download-url');
+                        const downloadErrorBox = document.getElementById('download-error-box');
+                        const downloadLoading = document.getElementById('download-loading');
                         // Preview elements removed
 
                         downloadForm.addEventListener('submit', async function(e) {
@@ -1249,18 +1252,18 @@ app.get('/', (req, res) => {
                         // Format selection logic removed
 
                         // Transcribe form functionality
-                        const transcribeForm = document.getElementById('transcribe-form'),
-                        transcribeUrlInput = document.getElementById('transcribe-url'),
-                        transcribeErrorBox = document.getElementById('transcribe-error-box'),
-                        transcribeLoading = document.getElementById('transcribe-loading'),
-                        transcribePreview = document.getElementById('transcribe-preview'),
-                        transcribeThumbnail = document.getElementById('transcribe-thumbnail'),
-                        transcribeVideoTitle = document.getElementById('transcribe-video-title'),
-                        transcribeVideoDuration = document.getElementById('transcribe-video-duration'),
-                        jsonBtn = document.getElementById('transcribe-json-btn'),
-                        srtBtn = document.getElementById('transcribe-srt-btn'),
-                        txtBtn = document.getElementById('transcribe-txt-btn'),
-                        transcriptText = document.getElementById('transcript-text');
+                        const transcribeForm = document.getElementById('transcribe-form');
+                        const transcribeUrlInput = document.getElementById('transcribe-url');
+                        const transcribeErrorBox = document.getElementById('transcribe-error-box');
+                        const transcribeLoading = document.getElementById('transcribe-loading');
+                        const transcribePreview = document.getElementById('transcribe-preview');
+                        const transcribeThumbnail = document.getElementById('transcribe-thumbnail');
+                        const transcribeVideoTitle = document.getElementById('transcribe-video-title');
+                        const transcribeVideoDuration = document.getElementById('transcribe-video-duration');
+                        const jsonBtn = document.getElementById('transcribe-json-btn');
+                        const srtBtn = document.getElementById('transcribe-srt-btn');
+                        const txtBtn = document.getElementById('transcribe-txt-btn');
+                        const transcriptText = document.getElementById('transcript-text');
 
                         transcribeForm.addEventListener('submit', async function(e) {
                             e.preventDefault();
@@ -1848,117 +1851,18 @@ async function sendMultipartFormRequest(url, formData, headers = {}) {
     });
 }
 
-// Helper function for downloading files using streams
-async function downloadFile(url, targetPath, requestId) {
-    console.log(`[${requestId}] Downloading file from URL: ${url.substring(0, 100)}...`);
+<environment_details>
+# VSCode Visible Files
+server.js
+server.js
+server.js
 
-    return new Promise((resolve, reject) => {
-        // Create write stream for the target file
-        const fileStream = fs.createWriteStream(targetPath);
+# VSCode Open Tabs
+server.js
 
-        // Parse URL
-        const parsedUrl = new URL(url);
-        const protocol = parsedUrl.protocol === 'https:' ? https : http;
+# Current Time
+4/3/2025, 7:42:25 PM (Asia/Jerusalem, UTC+3:00)
 
-        // Request options
-        const options = {
-            method: 'GET',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Connection': 'keep-alive'
-            },
-            timeout: 60000 // 60 seconds timeout
-        };
-
-        // Make the request
-        const req = protocol.get(url, options, (response) => {
-            // Check if response is successful
-            if (response.statusCode !== 200) {
-                fileStream.close();
-                // Attempt to delete the file only if it exists
-                if (fs.existsSync(targetPath)) {
-                    fs.unlinkSync(targetPath);
-                }
-                return reject(new Error(`Download failed with status code ${response.statusCode}`));
-            }
-
-            // Track download progress
-            let downloadedBytes = 0;
-            let totalBytes = parseInt(response.headers['content-length'] || '0');
-
-            response.on('data', (chunk) => {
-                downloadedBytes += chunk.length;
-                // Log progress every ~1MB or 10% for larger files
-                if (downloadedBytes % 1000000 < chunk.length ||
-                    (totalBytes > 0 && downloadedBytes / totalBytes >= 0.1 && downloadedBytes / totalBytes < 1)) { // Avoid logging 100% twice
-                    console.log(`[${requestId}] Downloaded ${Math.round(downloadedBytes/1024/1024)}MB ${totalBytes ? `(${Math.round(downloadedBytes/totalBytes*100)}%)` : ''}`);
-                }
-            });
-
-            // Pipe response to file
-            response.pipe(fileStream);
-
-            // Handle download completion
-            fileStream.on('finish', () => {
-                fileStream.close(async () => { // Ensure close completes before checking stats
-                    try {
-                        // Verify file was downloaded successfully
-                        const stats = fs.statSync(targetPath);
-                        if (stats.size === 0) {
-                            fs.unlinkSync(targetPath); // Delete empty file
-                            return reject(new Error('Downloaded file is empty'));
-                        }
-                        console.log(`[${requestId}] Download completed. File size: ${stats.size} bytes`);
-                        resolve(stats.size);
-                    } catch (statError) {
-                        console.error(`[${requestId}] Error checking file stats after download:`, statError);
-                        reject(statError);
-                    }
-                });
-            });
-
-            // Handle errors during streaming
-            fileStream.on('error', (err) => {
-                console.error(`[${requestId}] File stream error during download:`, err);
-                fileStream.close();
-                 // Attempt to delete the file only if it exists
-                if (fs.existsSync(targetPath)) {
-                    fs.unlinkSync(targetPath);
-                }
-                reject(err);
-            });
-        });
-
-        // Handle request errors
-        req.on('error', (err) => {
-             console.error(`[${requestId}] Request error during download:`, err);
-             // Attempt to delete the file only if it exists
-             if (fs.existsSync(targetPath)) {
-                 try { fs.unlinkSync(targetPath); } catch {}
-             }
-            reject(err);
-        });
-
-        // Handle timeout
-        req.on('timeout', () => {
-            console.error(`[${requestId}] Download request timed out`);
-            req.destroy(); // Destroy the request
-             // Attempt to delete the file only if it exists
-             if (fs.existsSync(targetPath)) {
-                 try { fs.unlinkSync(targetPath); } catch {}
-             }
-            reject(new Error('Download request timed out'));
-        });
-    });
-}
-
-// Helper function to format time for SRT files
-function formatSrtTime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const millis = Math.floor((seconds % 1) * 1000);
-
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
-}
+# Current Mode
+ACT MODE
+</environment_details>
