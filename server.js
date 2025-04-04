@@ -13,16 +13,16 @@ const FormData = require('form-data'); // Add form-data package for multipart fo
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Add basic rate limiting
-const requestCounts = {};
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX = 10; // 10 requests per minute per IP
+// Add basic rate limiting - *** REMOVED ***
+// const requestCounts = {};
+// const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+// const RATE_LIMIT_MAX = 10; // 10 requests per minute per IP
 
 // Add API key for ElevenLabs at the top of the file with other constants
 const ELEVENLABS_API_KEY = "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
 
-// Create a temporary directory for audio files if it doesn't exist
-const TEMP_DIR = path.join(os.tmpdir(), 'youtube-proxy-audio');
+// Create a temporary directory for media files if it doesn't exist
+const TEMP_DIR = path.join(os.tmpdir(), 'youtube-proxy-media'); // Changed name slightly
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
@@ -48,24 +48,24 @@ setInterval(() => {
     }
 }, 15 * 60 * 1000); // Check every 15 minutes
 
-// Rate limiting middleware
-function rateLimiter(req, res, next) {
-    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-    requestCounts[ip] = (requestCounts[ip] || 0) + 1;
-
-    if (requestCounts[ip] > RATE_LIMIT_MAX) {
-        console.log(`Rate limit exceeded for IP: ${ip}`);
-        return res.status(429).json({
-            error: 'Too many requests. Please try again later.',
-            retryAfter: Math.floor(RATE_LIMIT_WINDOW / 1000)
-        });
-    }
-
-    next();
-}
+// Rate limiting middleware - *** REMOVED ***
+// function rateLimiter(req, res, next) {
+//     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+//     requestCounts[ip] = (requestCounts[ip] || 0) + 1;
+//
+//     if (requestCounts[ip] > RATE_LIMIT_MAX) {
+//         console.log(`Rate limit exceeded for IP: ${ip}`);
+//         return res.status(429).json({
+//             error: 'Too many requests. Please try again later.',
+//             retryAfter: Math.floor(RATE_LIMIT_WINDOW / 1000)
+//         });
+//     }
+//
+//     next();
+// }
 
 app.use(cors());
-app.use(rateLimiter);
+// app.use(rateLimiter); // *** REMOVED ***
 
 // Add request logging middleware to see all incoming requests
 app.use((req, res, next) => {
@@ -159,8 +159,8 @@ async function fetchFromYouTube(url, options, maxRetries = 3) {
         const youtubeOptions = {
             ...options,
             headers: advancedHeaders,
-            // Set a timeout of 15 seconds for the fetch operation
-            timeout: 15000 // 15 second timeout before aborting
+            // Set a timeout of 15 seconds for the fetch operation - *** REMOVED ***
+            // timeout: 15000 // 15 second timeout before aborting
         };
 
         // הוספת פרוקסי אם הוא מופעל - *** הוסר ***
@@ -245,9 +245,9 @@ async function fetchFromYouTube(url, options, maxRetries = 3) {
     throw lastError || new Error('Failed to fetch from YouTube after multiple attempts');
 }
 
-// Add maximum file size check for streaming
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // Limit to 25MB for Render free tier
-let totalBytesStreamed = 0;
+// Add maximum file size check for streaming - *** REMOVED ***
+// const MAX_FILE_SIZE = 25 * 1024 * 1024; // Limit to 25MB for Render free tier
+let totalBytesStreamed = 0; // Keep this for logging purposes
 
 // Modify the proxy endpoint to include size limits and better streaming
 app.get('/proxy', async (req, res) => {
@@ -303,27 +303,27 @@ app.get('/proxy', async (req, res) => {
         }
     }, 10000); // Check every 10 seconds
 
-    // Set a timeout for the entire request
-    const requestTimeout = setTimeout(() => {
-        if (!res.writableEnded) {
-            console.error(`[${requestId}] Request timed out after 120 seconds`);
-            clearInterval(keepAliveInterval);
-
-            // Only attempt to write an error if headers haven't been sent
-            if (!res.headersSent) {
-                return res.status(504).json({
-                    error: 'Gateway Timeout',
-                    message: 'Request took too long to complete'
-                });
-            } else {
-                try {
-                    res.end();
-                } catch (e) {
-                    console.error(`[${requestId}] Error ending response after timeout:`, e);
-                }
-            }
-        }
-    }, 120000); // 120 second overall timeout
+    // Set a timeout for the entire request - *** REMOVED ***
+    // const requestTimeout = setTimeout(() => {
+    //     if (!res.writableEnded) {
+    //         console.error(`[${requestId}] Request timed out after 120 seconds`);
+    //         clearInterval(keepAliveInterval);
+    //
+    //         // Only attempt to write an error if headers haven't been sent
+    //         if (!res.headersSent) {
+    //             return res.status(504).json({
+    //                 error: 'Gateway Timeout',
+    //                 message: 'Request took too long to complete'
+    //             });
+    //         } else {
+    //             try {
+    //                 res.end();
+    //             } catch (e) {
+    //                 console.error(`[${requestId}] Error ending response after timeout:`, e);
+    //             }
+    //         }
+    //     }
+    // }, 120000); // 120 second overall timeout
 
     try {
         // Check if it's a YouTube URL
@@ -362,18 +362,19 @@ app.get('/proxy', async (req, res) => {
 
         // Check for content length
         const contentLength = response.headers.get('content-length');
-        const estimatedSize = contentLength ? parseInt(contentLength, 10) : null;
+        const estimatedSize = contentLength ? parseInt(contentLength, 10) : null; // Keep for logging
 
-        if (estimatedSize && estimatedSize > MAX_FILE_SIZE) {
-            console.warn(`[${requestId}] Content length (${estimatedSize} bytes) exceeds maximum size limit (${MAX_FILE_SIZE} bytes)`);
-            clearInterval(keepAliveInterval);
-            clearTimeout(requestTimeout);
-            return res.status(413).json({
-                error: 'Payload Too Large',
-                message: `File size (${Math.round(estimatedSize/1024/1024)}MB) exceeds maximum size limit (${Math.round(MAX_FILE_SIZE/1024/1024)}MB)`,
-                solution: 'Try a different quality or format'
-            });
-        }
+        // Size limit check removed
+        // if (estimatedSize && estimatedSize > MAX_FILE_SIZE) {
+        //     console.warn(`[${requestId}] Content length (${estimatedSize} bytes) exceeds maximum size limit (${MAX_FILE_SIZE} bytes)`);
+        //     clearInterval(keepAliveInterval);
+        //     clearTimeout(requestTimeout);
+        //     return res.status(413).json({
+        //         error: 'Payload Too Large',
+        //         message: `File size (${Math.round(estimatedSize/1024/1024)}MB) exceeds maximum size limit (${Math.round(MAX_FILE_SIZE/1024/1024)}MB)`,
+        //         solution: 'Try a different quality or format'
+        //     });
+        // }
 
         // Set proper status code for range requests
         if (rangeHeader && response.status === 206) {
@@ -407,13 +408,14 @@ app.get('/proxy', async (req, res) => {
             const { Transform } = require('stream');
             const sizeMonitorStream = new Transform({
                 transform(chunk, encoding, callback) {
-                    totalBytesStreamed += chunk.length;
+                    totalBytesStreamed += chunk.length; // Keep tracking for logs
 
-                    if (totalBytesStreamed > MAX_FILE_SIZE) {
-                        console.warn(`[${requestId}] Size limit exceeded during streaming. Closing connection after ${totalBytesStreamed} bytes`);
-                        this.destroy(new Error(`Size limit of ${MAX_FILE_SIZE} bytes exceeded`));
-                        return;
-                    }
+                    // Size limit check removed during streaming
+                    // if (totalBytesStreamed > MAX_FILE_SIZE) {
+                    //     console.warn(`[${requestId}] Size limit exceeded during streaming. Closing connection after ${totalBytesStreamed} bytes`);
+                    //     this.destroy(new Error(`Size limit of ${MAX_FILE_SIZE} bytes exceeded`));
+                    //     return;
+                    // }
 
                     // Pass the chunk through
                     this.push(chunk);
@@ -437,7 +439,7 @@ app.get('/proxy', async (req, res) => {
             response.body.on('error', (err) => {
                 console.error(`[${requestId}] Source stream error:`, err);
                 clearInterval(keepAliveInterval);
-                clearTimeout(requestTimeout);
+                // clearTimeout(requestTimeout); // *** REMOVED ***
 
                 if (!res.writableEnded) {
                     try {
@@ -452,7 +454,7 @@ app.get('/proxy', async (req, res) => {
             response.body.on('end', () => {
                 console.log(`[${requestId}] Stream completed successfully. Total bytes: ${totalBytesStreamed}`);
                 clearInterval(keepAliveInterval);
-                clearTimeout(requestTimeout);
+                // clearTimeout(requestTimeout); // *** REMOVED ***
             });
 
             // Pipe through the monitor and to the response
@@ -463,12 +465,12 @@ app.get('/proxy', async (req, res) => {
                     const duration = Date.now() - startTime;
                     console.log(`[${requestId}] Response finished in ${duration}ms. Total bytes: ${totalBytesStreamed}`);
                     clearInterval(keepAliveInterval);
-                    clearTimeout(requestTimeout);
+                    // clearTimeout(requestTimeout); // *** REMOVED ***
                 })
                 .on('error', (err) => {
                     console.error(`[${requestId}] Response stream error:`, err);
                     clearInterval(keepAliveInterval);
-                    clearTimeout(requestTimeout);
+                    // clearTimeout(requestTimeout); // *** REMOVED ***
                 });
 
             // Log success with limited URL
@@ -480,7 +482,7 @@ app.get('/proxy', async (req, res) => {
         } catch (streamSetupErr) {
             console.error(`[${requestId}] Error setting up stream:`, streamSetupErr);
             clearInterval(keepAliveInterval);
-            clearTimeout(requestTimeout);
+            // clearTimeout(requestTimeout); // *** REMOVED ***
 
             // Only send error if headers have not been sent
             if (!res.headersSent) {
@@ -497,7 +499,7 @@ app.get('/proxy', async (req, res) => {
     } catch (err) {
         // Clean up intervals/timeouts on error
         clearInterval(keepAliveInterval);
-        clearTimeout(requestTimeout);
+        // clearTimeout(requestTimeout); // *** REMOVED ***
 
         console.error(`[${requestId}] Proxy error:`, err);
         console.error(`[${requestId}] Error stack:`, err.stack);
@@ -566,9 +568,9 @@ app.get('/proxy', async (req, res) => {
 // Updated download endpoint using youtube-search-download3 API for MP4 video and direct streaming
 app.get('/download', async (req, res) => {
     const videoId = req.query.id;
-    // Fetching MP4 video at 360p resolution as per user's example
+    // Fetching MP4 video at 720p resolution
     const format = 'mp4';
-    const resolution = '360';
+    const resolution = '720'; // Changed from '360' to '720'
     const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
     if (!videoId) {
@@ -597,7 +599,7 @@ app.get('/download', async (req, res) => {
                 'x-rapidapi-key': rapidApiKey,
                 'x-rapidapi-host': rapidApiHost
             },
-            timeout: 20000 // Shorter timeout for metadata request
+            // timeout: 20000 // Shorter timeout for metadata request - *** REMOVED ***
         });
 
         if (!apiMetadataResponse.ok) {
@@ -629,7 +631,7 @@ app.get('/download', async (req, res) => {
                 userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
                 isYouTubeRequest: true // Treat it like a YouTube request
             }),
-            timeout: 120000 // Longer timeout for the actual download
+            // timeout: 120000 // Longer timeout for the actual download - *** REMOVED ***
         });
 
         if (!videoResponse.ok) {
@@ -742,14 +744,14 @@ function formatFileSize(bytes) {
     return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
 }
 
-// Fix missing rate limit cleanup function that was accidentally removed
+// Fix missing rate limit cleanup function that was accidentally removed - *** REMOVED ***
 // Clear rate limit counts every minute
-setInterval(() => {
-    console.log('Clearing rate limit counts');
-    Object.keys(requestCounts).forEach(ip => {
-        requestCounts[ip] = 0;
-    });
-}, RATE_LIMIT_WINDOW);
+// setInterval(() => {
+//     console.log('Clearing rate limit counts');
+//     Object.keys(requestCounts).forEach(ip => {
+//         requestCounts[ip] = 0;
+//     });
+// }, RATE_LIMIT_WINDOW);
 
 // הוספת נקודת קצה לניהול הפרוקסי (מוגנת בסיסמה פשוטה)
 app.get('/proxy-manager', (req, res) => {
@@ -963,77 +965,110 @@ app.get('/transcribe', async (req, res) => {
     }
 
     try {
-        // STEP 1: Download audio using the new API (youtube-search-download3)
-        console.log(`[${requestId}] STEP 1: Downloading audio using youtube-search-download3`);
+        // STEP 1: Download VIDEO using the new API (youtube-search-download3) for transcription
+        console.log(`[${requestId}] STEP 1: Downloading video (MP4, 720p) using youtube-search-download3`);
 
         const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the same key
         const rapidApiHost = 'youtube-search-download3.p.rapidapi.com'; // *** Use the NEW API host ***
-        const audioFormat = 'mp3'; // Assuming mp3 is desired for transcription
-        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${audioFormat}`;
+        const videoFormat = 'mp4'; // Changed from 'mp3'
+        const videoResolution = '720'; // Added resolution
+        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${videoFormat}&resolution=${videoResolution}`; // Updated API URL
 
-        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.${audioFormat}`);
+        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.${videoFormat}`); // Changed extension to .mp4
         let apiMetadata = { title: `Video ${videoId}`, duration: 0 }; // Default metadata
 
         try {
-            console.log(`[${requestId}] Calling API: ${apiUrl}`);
-            const apiResponse = await fetchWithRetries(apiUrl, {
+            // Step 1.1: Get the video download link from the API
+            console.log(`[${requestId}] Calling API to get video download link: ${apiUrl}`);
+            const apiMetadataResponse = await fetchWithRetries(apiUrl, {
                 method: 'GET',
                 headers: {
                     'x-rapidapi-key': rapidApiKey,
                     'x-rapidapi-host': rapidApiHost
                 },
-                timeout: 60000 // Increased timeout for download
+                // timeout removed
             });
 
-            if (!apiResponse.ok) {
-                const errorText = await apiResponse.text();
-                console.error(`[${requestId}] API download error: ${apiResponse.status} ${apiResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
+            if (!apiMetadataResponse.ok) {
+                const errorText = await apiMetadataResponse.text();
+                console.error(`[${requestId}] API metadata error: ${apiMetadataResponse.status} ${apiMetadataResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
                 let errorJson = {};
                 try { errorJson = JSON.parse(errorText); } catch(e) {}
-                throw new Error(`Failed to fetch audio from download API: ${apiResponse.status} - ${errorJson.message || apiResponse.statusText}`);
+                throw new Error(`Failed to fetch metadata from download API: ${apiMetadataResponse.status} - ${errorJson.message || apiMetadataResponse.statusText}`);
             }
 
-            console.log(`[${requestId}] API response OK (${apiResponse.status}). Saving audio stream to ${tempFileName}`);
+            const metadata = await apiMetadataResponse.json();
+            const actualVideoUrl = metadata?.url; // Use 'url' property, renamed variable
 
-            // Pipe the stream to a temporary file
+            if (!actualVideoUrl) {
+                console.error(`[${requestId}] Video download API response missing download link. Response:`, JSON.stringify(metadata, null, 2));
+                throw new Error('Video download API did not return a valid download link.');
+            }
+            console.log(`[${requestId}] Received video download link: ${actualVideoUrl.substring(0, 100)}...`);
+
+             // Extract title from metadata if available
+             if (metadata?.title) {
+                 apiMetadata.title = metadata.title;
+                 console.log(`[${requestId}] Extracted title from metadata: ${apiMetadata.title}`);
+             }
+
+            // Step 1.2: Fetch the actual video content from the obtained URL
+            console.log(`[${requestId}] Fetching actual video content...`);
+            const videoResponse = await fetchWithRetries(actualVideoUrl, { // Renamed variable
+                 method: 'GET',
+                 headers: headersManager.generateAdvancedHeaders({ // Use generic headers
+                     userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
+                     isYouTubeRequest: false // Treat as generic download
+                 }),
+                 // Timeout removed
+            });
+
+             if (!videoResponse.ok) { // Check videoResponse
+                 const errorText = await videoResponse.text(); // Try reading error text from videoResponse
+                 console.error(`[${requestId}] Error fetching actual video content: ${videoResponse.status} ${videoResponse.statusText}. Body: ${errorText.substring(0, 200)}`);
+                 throw new Error(`Failed to fetch video content: ${videoResponse.status} ${videoResponse.statusText}`);
+             }
+            console.log(`[${requestId}] Video content response OK (${videoResponse.status}). Saving video stream to ${tempFileName}`);
+
+            // Step 1.3: Pipe the *video* stream to a temporary file
             await new Promise((resolve, reject) => {
                 const fileStream = fs.createWriteStream(tempFileName);
-                apiResponse.body.pipe(fileStream);
-                apiResponse.body.on('error', (err) => {
-                    console.error(`[${requestId}] Error reading API response stream:`, err);
+                videoResponse.body.pipe(fileStream); // Pipe videoResponse.body
+                videoResponse.body.on('error', (err) => { // Listen on videoResponse.body
+                    console.error(`[${requestId}] Error reading video stream:`, err);
                     fileStream.close(); // Ensure filestream is closed on error
-                    reject(new Error(`Error reading audio stream: ${err.message}`));
+                    reject(new Error(`Error reading video stream: ${err.message}`));
                 });
                 fileStream.on('finish', () => {
                     const stats = fs.statSync(tempFileName);
-                    console.log(`[${requestId}] Audio download successful. Size: ${stats.size} bytes`);
+                    console.log(`[${requestId}] Video download successful. Size: ${stats.size} bytes`); // Updated log
                     if (stats.size === 0) {
-                        reject(new Error('Downloaded audio file is empty.'));
+                        reject(new Error('Downloaded video file is empty.')); // Updated error message
                     } else {
                         resolve();
                     }
                 });
                 fileStream.on('error', (err) => {
-                     console.error(`[${requestId}] Error writing audio to temp file:`, err);
+                     console.error(`[${requestId}] Error writing video to temp file:`, err); // Updated log
                      reject(new Error(`Error writing temp file: ${err.message}`));
                 });
             });
 
             // Note: This API might not provide title/duration. We'll use defaults.
             // If the API *does* provide metadata (e.g., in headers), you could extract it here.
-            const disposition = apiResponse.headers.get('content-disposition');
-             if (disposition && disposition.includes('filename=')) {
-                 const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
-                 if (filenameMatch && filenameMatch[1]) {
-                     // Attempt to extract title from filename, removing extension
-                     let extractedTitle = filenameMatch[1].replace(/\.[^/.]+$/, "");
-                     apiMetadata.title = extractedTitle || apiMetadata.title;
-                     console.log(`[${requestId}] Extracted title from header: ${apiMetadata.title}`);
-                 }
-             }
+            // const disposition = apiResponse.headers.get('content-disposition'); // This was checking the wrong response
+            //  if (disposition && disposition.includes('filename=')) {
+            //      const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+            //      if (filenameMatch && filenameMatch[1]) {
+            //          // Attempt to extract title from filename, removing extension
+            //          let extractedTitle = filenameMatch[1].replace(/\.[^/.]+$/, "");
+            //          apiMetadata.title = extractedTitle || apiMetadata.title;
+            //          console.log(`[${requestId}] Extracted title from header: ${apiMetadata.title}`);
+            //      }
+            //  }
 
         } catch (error) {
-            console.error(`[${requestId}] Error during audio download for transcription:`, error);
+            console.error(`[${requestId}] Error during video download for transcription:`, error); // Updated log
             // Clean up temp file if it exists and the error occurred
             if (fs.existsSync(tempFileName)) {
                 try {
@@ -1042,9 +1077,9 @@ app.get('/transcribe', async (req, res) => {
                     console.warn(`[${requestId}] Failed to cleanup temp file after error: ${cleanupError.message}`);
                 }
             }
-            throw new Error(`Failed to get or download audio via RapidAPI: ${error.message}`);
+            throw new Error(`Failed to get or download video via RapidAPI: ${error.message}`); // Updated error message
         }
-        // The tempFileName now holds the downloaded audio, ready for STEP 3
+        // The tempFileName now holds the downloaded video, ready for STEP 3
 
         // STEP 3: Send to ElevenLabs for transcription
         console.log(`[${requestId}] STEP 3: SENDING TO ELEVENLABS FOR TRANSCRIPTION`);
@@ -1097,7 +1132,7 @@ app.get('/transcribe', async (req, res) => {
         // STEP 4: Clean up the temporary file
         try {
             fs.unlinkSync(tempFileName);
-            console.log(`[${requestId}] Temporary audio file deleted: ${tempFileName}`);
+            console.log(`[${requestId}] Temporary video file deleted: ${tempFileName}`); // Updated log
         } catch (deleteError) {
             console.warn(`[${requestId}] Failed to delete temporary file: ${deleteError.message}`);
         }

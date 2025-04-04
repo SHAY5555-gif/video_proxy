@@ -25,7 +25,7 @@ http://localhost:3000/proxy?url=https://example.com/video.mp4
 
 *   `GET /` - מציג את דף הבית (index.html).
 *   `GET /proxy?url=URL` - משמש כ-proxy כללי להורדת קבצים מכתובת URL נתונה.
-*   `GET /download?id=VIDEO_ID` - מוריד את הוידאו (MP4, 360p) של סרטון YouTube לפי המזהה שלו.
+*   `GET /download?id=VIDEO_ID` - מוריד את הוידאו (MP4, 720p) של סרטון YouTube לפי המזהה שלו.
 *   `GET /transcribe?id=VIDEO_ID&format=FORMAT` - מתמלל סרטון YouTube ומחזיר את התמלול בפורמט המבוקש (`json`, `srt`, `txt`).
 *   `GET /health` - בדיקת תקינות השרת.
 *   `GET /test-proxy?url=URL` - נקודת קצה לבדיקת תקינות הפרוקסי.
