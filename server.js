@@ -610,7 +610,7 @@ app.get('/download', async (req, res) => {
 
         // Step 2: Parse the JSON response to get the actual download link
         const metadata = await apiMetadataResponse.json();
-        const actualDownloadUrl = metadata?.link; // Assuming the link is in the 'link' property
+        const actualDownloadUrl = metadata?.url; // Corrected property name from 'link' to 'url'
 
         if (!actualDownloadUrl) {
             console.error(`[${requestId}] API response missing download link. Response:`, JSON.stringify(metadata, null, 2));
