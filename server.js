@@ -588,74 +588,108 @@ app.get('/download', async (req, res) => {
         // Construct URL for MP4 video download
         const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${format}&resolution=${resolution}`;
 
-        console.log(`[${requestId}] Calling API: ${apiUrl}`);
+        console.log(`[${requestId}] Calling API to get download link: ${apiUrl}`);
 
-        // Fetch directly from the download API
-        const apiResponse = await fetchWithRetries(apiUrl, {
+        // Step 1: Fetch the download metadata from the API
+        const apiMetadataResponse = await fetchWithRetries(apiUrl, {
             method: 'GET',
             headers: {
                 'x-rapidapi-key': rapidApiKey,
                 'x-rapidapi-host': rapidApiHost
             },
-            timeout: 60000 // Increased timeout for potential download
+            timeout: 20000 // Shorter timeout for metadata request
         });
 
-        if (!apiResponse.ok) {
-            const errorText = await apiResponse.text();
-            console.error(`[${requestId}] API error: ${apiResponse.status} ${apiResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
-            // Try to parse JSON error if possible
+        if (!apiMetadataResponse.ok) {
+            const errorText = await apiMetadataResponse.text();
+            console.error(`[${requestId}] API metadata error: ${apiMetadataResponse.status} ${apiMetadataResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
             let errorJson = {};
             try { errorJson = JSON.parse(errorText); } catch(e) {}
-            throw new Error(`Failed to fetch from download API: ${apiResponse.status} - ${errorJson.message || apiResponse.statusText}`);
+            throw new Error(`Failed to fetch metadata from download API: ${apiMetadataResponse.status} - ${errorJson.message || apiMetadataResponse.statusText}`);
         }
 
-        console.log(`[${requestId}] API response OK (${apiResponse.status}). Streaming download...`);
+        // Step 2: Parse the JSON response to get the actual download link
+        const metadata = await apiMetadataResponse.json();
+        const actualDownloadUrl = metadata?.link; // Assuming the link is in the 'link' property
 
-        // Determine filename
-        // Try to get filename from Content-Disposition header first
-        let filename = `${videoId}_${resolution}p.${format}`; // Default filename including resolution
-        const disposition = apiResponse.headers.get('content-disposition');
-        if (disposition && disposition.includes('filename=')) {
-            const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
-            if (filenameMatch && filenameMatch[1]) {
-                filename = filenameMatch[1];
-            }
+        if (!actualDownloadUrl) {
+            console.error(`[${requestId}] API response missing download link. Response:`, JSON.stringify(metadata, null, 2));
+            throw new Error('Download API did not return a valid download link.');
         }
-        // Clean filename just in case
-        filename = filename.replace(/[<>:"/\\|?*]+/g, '_');
+
+        console.log(`[${requestId}] Received download link: ${actualDownloadUrl.substring(0, 100)}...`);
+
+        // Step 3: Fetch the actual video file from the obtained URL
+        console.log(`[${requestId}] Fetching actual video content...`);
+        // Use the /proxy endpoint logic for fetching the actual video content
+        // This reuses the advanced headers, retries, and proxy logic
+        const videoResponse = await fetchFromYouTube(actualDownloadUrl, { // Use fetchFromYouTube as it handles googlevideo links well
+            method: 'GET',
+            headers: headersManager.generateAdvancedHeaders({ // Reuse header generation
+                userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
+                isYouTubeRequest: true // Treat it like a YouTube request
+            }),
+            timeout: 120000 // Longer timeout for the actual download
+        });
+
+        if (!videoResponse.ok) {
+            console.error(`[${requestId}] Error fetching actual video content: ${videoResponse.status} ${videoResponse.statusText}`);
+            throw new Error(`Failed to fetch video content: ${videoResponse.status} ${videoResponse.statusText}`);
+        }
+
+        console.log(`[${requestId}] Video content response OK (${videoResponse.status}). Streaming download...`);
+
+        // Step 4: Determine filename (use metadata title if available)
+        let filename = metadata?.title ? `${metadata.title}.${format}` : `${videoId}_${resolution}p.${format}`;
+        // Clean filename
+        filename = filename.replace(/[<>:"/\\|?*]+/g, '_').replace(/\s+/g, '_'); // Replace spaces too
 
         console.log(`[${requestId}] Filename: ${filename}`);
 
-        // Set headers for direct download
+        // Step 5: Set headers for the download
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
 
-        // Copy relevant headers from API response (like Content-Type, Content-Length)
-        const contentType = apiResponse.headers.get('content-type') || `video/${format}`; // Default to video/mp4
+        // Copy relevant headers from the *video* response
+        const contentType = videoResponse.headers.get('content-type') || `video/${format}`;
         res.setHeader('Content-Type', contentType);
 
-        const contentLength = apiResponse.headers.get('content-length');
+        const contentLength = videoResponse.headers.get('content-length');
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
             console.log(`[${requestId}] Content-Length: ${contentLength}`);
         } else {
-            console.warn(`[${requestId}] Content-Length header missing from API response.`);
+            console.warn(`[${requestId}] Content-Length header missing from video response.`);
         }
 
-        // Pipe the API response body directly to the client response
-        apiResponse.body.pipe(res).on('error', (streamErr) => {
-            console.error(`[${requestId}] Error piping stream to client:`, streamErr);
-            // Try to end the response if it hasn't already finished
+        // Step 6: Pipe the video stream to the client
+        videoResponse.body.pipe(res).on('error', (streamErr) => {
+            console.error(`[${requestId}] Error piping video stream to client:`, streamErr);
             if (!res.writableEnded) {
                 res.end();
             }
         }).on('finish', () => {
-            console.log(`[${requestId}] Stream finished successfully.`);
+            console.log(`[${requestId}] Video stream finished successfully.`);
         });
 
     } catch (error) {
         console.error(`[${requestId}] Download error:`, error);
-        // Send a JSON error response
-        res.status(500).json({
+        // Send a JSON error response if headers haven't been sent
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                error: `שגיאה בהורדה: ${error.message}`,
+                requestId: requestId
+            });
+        } else {
+            // If headers are sent, we can only try to end the connection
+            if (!res.writableEnded) {
+                res.end();
+            }
+        }
+        /* // Optional: Keep HTML error page if preferred
+        res.status(500).send(`
+            <html>
+                <head>
             success: false,
             error: `שגיאה בהורדה: ${error.message}`,
             requestId: requestId
