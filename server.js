@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // מפתחות API
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d284";
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28";
 const RAPIDAPI_HOST = "youtube-search-download3.p.rapidapi.com";
 
 // יצירת תיקייה זמנית לאחסון קבצי מדיה
