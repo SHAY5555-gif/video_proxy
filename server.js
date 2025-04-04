@@ -929,66 +929,77 @@ app.get('/transcribe', async (req, res) => {
     }
 
     try {
-        // STEP 1 & 2: Get audio download link from RapidAPI and download the audio
-        console.log(`[${requestId}] STEP 1 & 2: Getting audio URL from RapidAPI and downloading`);
+        // STEP 1: Download audio using the new API (youtube-search-download3)
+        console.log(`[${requestId}] STEP 1: Downloading audio using youtube-search-download3`);
 
-        const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the provided key
-        const rapidApiHost = 'youtube-downloader-api-fast-reliable-and-easy.p.rapidapi.com';
-        const youtubeWatchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const rapidApiUrl = `https://${rapidApiHost}/fetch_audio?url=${encodeURIComponent(youtubeWatchUrl)}`;
+        const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the same key
+        const rapidApiHost = 'youtube-search-download3.p.rapidapi.com'; // *** Use the NEW API host ***
+        const audioFormat = 'mp3'; // Assuming mp3 is desired for transcription
+        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${audioFormat}`;
 
-        let audioDownloadUrl;
-        let audioFileSize = 0;
-        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`); // Keep temp file logic
-        let apiMetadata = { title: '', duration: 0 }; // Placeholder for title/duration from API
+        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.${audioFormat}`);
+        let apiMetadata = { title: `Video ${videoId}`, duration: 0 }; // Default metadata
 
         try {
-            console.log(`[${requestId}] Calling RapidAPI: ${rapidApiUrl}`);
-            const rapidApiResponse = await fetch(rapidApiUrl, {
+            console.log(`[${requestId}] Calling API: ${apiUrl}`);
+            const apiResponse = await fetchWithRetries(apiUrl, {
                 method: 'GET',
                 headers: {
                     'x-rapidapi-key': rapidApiKey,
                     'x-rapidapi-host': rapidApiHost
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: 60000 // Increased timeout for download
             });
 
-            if (!rapidApiResponse.ok) {
-                const errorText = await rapidApiResponse.text();
-                console.error(`[${requestId}] RapidAPI error: ${rapidApiResponse.status} ${rapidApiResponse.statusText}. Body: ${errorText}`);
-                throw new Error(`Failed to fetch audio info from RapidAPI: ${rapidApiResponse.status}`);
+            if (!apiResponse.ok) {
+                const errorText = await apiResponse.text();
+                console.error(`[${requestId}] API download error: ${apiResponse.status} ${apiResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
+                let errorJson = {};
+                try { errorJson = JSON.parse(errorText); } catch(e) {}
+                throw new Error(`Failed to fetch audio from download API: ${apiResponse.status} - ${errorJson.message || apiResponse.statusText}`);
             }
 
-            const rapidApiData = await rapidApiResponse.json();
-            console.log(`[${requestId}] RapidAPI Response:`, JSON.stringify(rapidApiData).substring(0, 200) + '...'); // Log truncated response
+            console.log(`[${requestId}] API response OK (${apiResponse.status}). Saving audio stream to ${tempFileName}`);
 
-            // Extract the download link and metadata (adjust based on actual API response structure)
-            // Assuming the response looks like { success: true, link: "...", title: "...", duration: ... }
-            if (!rapidApiData || !rapidApiData.success || !rapidApiData.link) {
-                 // Log the actual response if the structure is unexpected
-                console.error(`[${requestId}] Unexpected RapidAPI response structure:`, rapidApiData);
-                throw new Error('Invalid response structure from RapidAPI or download link missing.');
-            }
-            audioDownloadUrl = rapidApiData.link;
-            // Store title and duration if available from the API response
-            apiMetadata.title = rapidApiData.title || `Video ${videoId}`;
-            apiMetadata.duration = rapidApiData.duration || 0; // Assuming duration is in seconds
+            // Pipe the stream to a temporary file
+            await new Promise((resolve, reject) => {
+                const fileStream = fs.createWriteStream(tempFileName);
+                apiResponse.body.pipe(fileStream);
+                apiResponse.body.on('error', (err) => {
+                    console.error(`[${requestId}] Error reading API response stream:`, err);
+                    fileStream.close(); // Ensure filestream is closed on error
+                    reject(new Error(`Error reading audio stream: ${err.message}`));
+                });
+                fileStream.on('finish', () => {
+                    const stats = fs.statSync(tempFileName);
+                    console.log(`[${requestId}] Audio download successful. Size: ${stats.size} bytes`);
+                    if (stats.size === 0) {
+                        reject(new Error('Downloaded audio file is empty.'));
+                    } else {
+                        resolve();
+                    }
+                });
+                fileStream.on('error', (err) => {
+                     console.error(`[${requestId}] Error writing audio to temp file:`, err);
+                     reject(new Error(`Error writing temp file: ${err.message}`));
+                });
+            });
 
-            console.log(`[${requestId}] Received audio download URL from RapidAPI: ${audioDownloadUrl.substring(0, 100)}...`);
-            console.log(`[${requestId}] Title: ${apiMetadata.title}, Duration: ${apiMetadata.duration}s`);
-
-            // Now download the audio file using the obtained URL
-            console.log(`[${requestId}] Downloading audio from RapidAPI link to ${tempFileName}`);
-            audioFileSize = await downloadFile(audioDownloadUrl, tempFileName, requestId); // Use existing downloadFile helper
-
-            if (audioFileSize === 0) {
-                 fs.unlinkSync(tempFileName); // Clean up empty file
-                 throw new Error('Downloaded audio file is empty.');
-            }
-            console.log(`[${requestId}] Audio download successful. Size: ${audioFileSize} bytes`);
+            // Note: This API might not provide title/duration. We'll use defaults.
+            // If the API *does* provide metadata (e.g., in headers), you could extract it here.
+            const disposition = apiResponse.headers.get('content-disposition');
+             if (disposition && disposition.includes('filename=')) {
+                 const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+                 if (filenameMatch && filenameMatch[1]) {
+                     // Attempt to extract title from filename, removing extension
+                     let extractedTitle = filenameMatch[1].replace(/\.[^/.]+$/, "");
+                     apiMetadata.title = extractedTitle || apiMetadata.title;
+                     console.log(`[${requestId}] Extracted title from header: ${apiMetadata.title}`);
+                 }
+             }
 
         } catch (error) {
-            console.error(`[${requestId}] Error during RapidAPI fetch or download:`, error);
+            console.error(`[${requestId}] Error during audio download for transcription:`, error);
             // Clean up temp file if it exists and the error occurred
             if (fs.existsSync(tempFileName)) {
                 try {
