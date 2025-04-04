@@ -163,12 +163,12 @@ async function fetchFromYouTube(url, options, maxRetries = 3) {
             timeout: 15000 // 15 second timeout before aborting
         };
 
-        // הוספת פרוקסי אם הוא מופעל
-        const proxyAgent = proxyRotator.createProxyAgent();
-        if (proxyAgent) {
-            youtubeOptions.agent = proxyAgent;
-            console.log(`[${requestId}] Using proxy for this request`);
-        }
+        // הוספת פרוקסי אם הוא מופעל - *** הוסר ***
+        // const proxyAgent = proxyRotator.createProxyAgent();
+        // if (proxyAgent) {
+        //     youtubeOptions.agent = proxyAgent;
+        //     console.log(`[${requestId}] Using proxy for this request`);
+        // }
 
         return youtubeOptions;
     };
