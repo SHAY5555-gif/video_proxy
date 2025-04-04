@@ -71,19 +71,19 @@ async function fetchWithRetries(url, options, maxRetries = 3) {
         try {
             console.log(`ניסיון ${attempt}/${maxRetries} עבור כתובת: ${url.substring(0, 100)}...`);
             const response = await fetch(url, options);
-            
+
             if (response.status === 429) {
                 console.log(`הגבלת קצב. המתנה ${retryDelay}ms לפני ניסיון חוזר`);
                 await setTimeout(retryDelay);
                 retryDelay *= 2;
                 continue;
             }
-            
+
             return response;
         } catch (err) {
             lastError = err;
             console.error(`ניסיון fetch ${attempt} נכשל:`, err.message);
-            
+
             if (attempt < maxRetries) {
                 console.log(`המתנה ${retryDelay}ms לפני ניסיון חוזר...`);
                 await setTimeout(retryDelay);
@@ -160,7 +160,7 @@ async function sendMultipartFormRequest(url, formData, headers = {}) {
                 // ניסיון לפרסר כ-JSON אם אפשר
                 try {
                     data = JSON.parse(responseBody);
-                } catch (e) {
+                    } catch (e) {
                     data = responseBody;
                 }
 
@@ -200,7 +200,7 @@ app.get('/transcribe', async (req, res) => {
             } else if (urlObj.hostname.includes('youtu.be')) {
                 actualVideoId = urlObj.pathname.substring(1);
             }
-        } catch (error) {
+    } catch (error) {
             console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
         }
     }
@@ -228,37 +228,37 @@ app.get('/transcribe', async (req, res) => {
 
         // שלב 1.1: קבלת קישור הורדה מ-RapidAPI
         console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
-        const apiMetadataResponse = await fetchWithRetries(apiUrl, {
-            method: 'GET',
-            headers: {
+            const apiMetadataResponse = await fetchWithRetries(apiUrl, {
+                method: 'GET',
+                headers: {
                 'x-rapidapi-key': RAPIDAPI_KEY,
                 'x-rapidapi-host': RAPIDAPI_HOST
             }
-        });
+            });
 
-        if (!apiMetadataResponse.ok) {
+            if (!apiMetadataResponse.ok) {
             throw new Error(`נכשל לקבל מטא-דאטה מ-RapidAPI: ${apiMetadataResponse.status}`);
-        }
+            }
 
-        const metadata = await apiMetadataResponse.json();
+            const metadata = await apiMetadataResponse.json();
         const actualVideoUrl = metadata?.url;
 
-        if (!actualVideoUrl) {
+            if (!actualVideoUrl) {
             throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
-        }
-        
+            }
+
         console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
 
         // חילוץ כותרת מהמטא-דאטה אם זמינה
-        if (metadata?.title) {
-            apiMetadata.title = metadata.title;
+             if (metadata?.title) {
+                 apiMetadata.title = metadata.title;
             console.log(`[${requestId}] כותרת סרטון: ${apiMetadata.title}`);
         }
 
         // שלב 1.2: הורדת הוידאו לאחסון בשרת
         console.log(`[${requestId}] מוריד את תוכן הוידאו...`);
         const videoResponse = await fetchWithRetries(actualVideoUrl, {
-            method: 'GET',
+                 method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
@@ -271,8 +271,8 @@ app.get('/transcribe', async (req, res) => {
         console.log(`[${requestId}] שומר וידאו לאחסון זמני: ${tempFileName}`);
 
         // שמירת הוידאו לקובץ זמני
-        await new Promise((resolve, reject) => {
-            const fileStream = fs.createWriteStream(tempFileName);
+            await new Promise((resolve, reject) => {
+                const fileStream = fs.createWriteStream(tempFileName);
             videoResponse.body.pipe(fileStream);
             
             videoResponse.body.on('error', (err) => {
@@ -280,20 +280,20 @@ app.get('/transcribe', async (req, res) => {
                 reject(new Error(`שגיאה בהורדת וידאו: ${err.message}`));
             });
             
-            fileStream.on('finish', () => {
-                const stats = fs.statSync(tempFileName);
+                fileStream.on('finish', () => {
+                    const stats = fs.statSync(tempFileName);
                 console.log(`[${requestId}] הורדת וידאו הושלמה. גודל: ${formatFileSize(stats.size)}`);
-                if (stats.size === 0) {
+                    if (stats.size === 0) {
                     reject(new Error('קובץ הוידאו שהורד ריק.'));
-                } else {
-                    resolve();
-                }
-            });
+                    } else {
+                        resolve();
+                    }
+                });
             
-            fileStream.on('error', (err) => {
+                fileStream.on('error', (err) => {
                 reject(new Error(`שגיאה בשמירת וידאו: ${err.message}`));
+                });
             });
-        });
 
         // שלב 2: שליחה ל-ElevenLabs לתמלול
         console.log(`[${requestId}] שלב 2: שולח ל-ElevenLabs לתמלול`);
@@ -306,10 +306,10 @@ app.get('/transcribe', async (req, res) => {
 
         // שליחה ל-API של ElevenLabs
         const { response: apiResponse, data } = await sendMultipartFormRequest(
-            'https://api.elevenlabs.io/v1/speech-to-text',
-            formData,
-            { 'xi-api-key': ELEVENLABS_API_KEY }
-        );
+                    'https://api.elevenlabs.io/v1/speech-to-text',
+                    formData,
+                    { 'xi-api-key': ELEVENLABS_API_KEY }
+                );
 
         if (apiResponse.statusCode !== 200) {
             throw new Error(`שגיאת ElevenLabs API: ${apiResponse.statusCode}`);
