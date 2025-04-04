@@ -563,30 +563,30 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-// Updated download endpoint using youtube-search-download3 API and direct streaming
+// Updated download endpoint using youtube-search-download3 API for MP4 video and direct streaming
 app.get('/download', async (req, res) => {
     const videoId = req.query.id;
-    // Assuming 'mp3' is the desired audio format. Change if needed.
-    const format = req.query.format || 'mp3';
+    // Fetching MP4 video at 360p resolution as per user's example
+    const format = 'mp4';
+    const resolution = '360';
     const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
     if (!videoId) {
         return res.status(400).json({
             success: false,
             error: 'חסר פרמטר חובה: id (מזהה סרטון)',
-            example: '/download?id=YOUTUBE_VIDEO_ID&format=mp3'
+            example: '/download?id=YOUTUBE_VIDEO_ID' // Format/resolution are fixed now
         });
     }
 
-    console.log(`[${requestId}] Direct download request for video ID: ${videoId}, format: ${format}`);
+    console.log(`[${requestId}] Direct video download request for video ID: ${videoId}, format: ${format}, resolution: ${resolution}`);
 
     try {
         // Construct the API URL for youtube-search-download3
         const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the same key for now
         const rapidApiHost = 'youtube-search-download3.p.rapidapi.com';
-        // Note: The example used type=mp4&resolution=360. We'll try type=mp3.
-        // If this API doesn't support 'mp3', you might need 'm4a' or adjust based on API docs.
-        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${format}`;
+        // Construct URL for MP4 video download
+        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${format}&resolution=${resolution}`;
 
         console.log(`[${requestId}] Calling API: ${apiUrl}`);
 
@@ -613,7 +613,7 @@ app.get('/download', async (req, res) => {
 
         // Determine filename
         // Try to get filename from Content-Disposition header first
-        let filename = `${videoId}.${format}`; // Default filename
+        let filename = `${videoId}_${resolution}p.${format}`; // Default filename including resolution
         const disposition = apiResponse.headers.get('content-disposition');
         if (disposition && disposition.includes('filename=')) {
             const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
@@ -630,7 +630,7 @@ app.get('/download', async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
 
         // Copy relevant headers from API response (like Content-Type, Content-Length)
-        const contentType = apiResponse.headers.get('content-type') || `audio/${format}`; // Default based on format
+        const contentType = apiResponse.headers.get('content-type') || `video/${format}`; // Default to video/mp4
         res.setHeader('Content-Type', contentType);
 
         const contentLength = apiResponse.headers.get('content-length');
