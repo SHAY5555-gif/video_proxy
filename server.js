@@ -854,7 +854,7 @@ app.listen(PORT, () => {
     console.log('  - GET /                                      Home page');
     console.log('  - GET /proxy?url=URL                         Proxy endpoint');
     // console.log('  - GET /youtube-info?id=VIDEO_ID              Get video formats'); // Removed
-    console.log('  - GET /download?id=VIDEO_ID                  Download audio'); // Updated
+    console.log('  - GET /download?id=VIDEO_ID                  Download video'); // Updated description
     console.log('  - GET /transcribe?id=VIDEO_ID&format=FORMAT  Transcribe video');
     console.log('  - GET /health                                Health check');
     console.log('  - GET /test-proxy?url=URL                    Test proxy');
