@@ -1,33 +1,34 @@
+/**
+ * YouTube Transcription Service
+ * שירות לתמלול סרטוני יוטיוב באמצעות ElevenLabs
+ */
+
 const express = require('express');
 const fetch = require('node-fetch');
-const cors = require('cors');
 const { setTimeout } = require('timers/promises');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
+const FormData = require('form-data');
 const https = require('https');
 const http = require('http');
-const FormData = require('form-data'); // Add form-data package for multipart forms
 
+// הגדרות בסיסיות
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Add basic rate limiting - *** REMOVED ***
-// const requestCounts = {};
-// const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-// const RATE_LIMIT_MAX = 10; // 10 requests per minute per IP
+// מפתחות API
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d284";
+const RAPIDAPI_HOST = "youtube-search-download3.p.rapidapi.com";
 
-// Add API key for ElevenLabs at the top of the file with other constants
-const ELEVENLABS_API_KEY = "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
-
-// Create a temporary directory for media files if it doesn't exist
-const TEMP_DIR = path.join(os.tmpdir(), 'youtube-proxy-media'); // Changed name slightly
+// יצירת תיקייה זמנית לאחסון קבצי מדיה
+const TEMP_DIR = path.join(os.tmpdir(), 'youtube-transcription');
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-// Add cleanup function to periodically remove old temporary files
+// ניקוי קבצים זמניים כל שעה
 setInterval(() => {
     try {
         const currentTime = Date.now();
@@ -37,703 +38,68 @@ setInterval(() => {
             const filePath = path.join(TEMP_DIR, file);
             const stats = fs.statSync(filePath);
 
-            // Delete files older than 1 hour
+            // מחיקת קבצים ישנים יותר משעה
             if (currentTime - stats.mtimeMs > 60 * 60 * 1000) {
                 fs.unlinkSync(filePath);
-                console.log(`Deleted old temporary file: ${filePath}`);
+                console.log(`ניקוי קבצים: נמחק קובץ זמני ישן: ${filePath}`);
             }
         }
     } catch (err) {
-        console.error('Error cleaning up temporary files:', err);
+        console.error('שגיאה בניקוי קבצים זמניים:', err);
     }
-}, 15 * 60 * 1000); // Check every 15 minutes
+}, 60 * 60 * 1000);
 
-// Rate limiting middleware - *** REMOVED ***
-// function rateLimiter(req, res, next) {
-//     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-//     requestCounts[ip] = (requestCounts[ip] || 0) + 1;
-//
-//     if (requestCounts[ip] > RATE_LIMIT_MAX) {
-//         console.log(`Rate limit exceeded for IP: ${ip}`);
-//         return res.status(429).json({
-//             error: 'Too many requests. Please try again later.',
-//             retryAfter: Math.floor(RATE_LIMIT_WINDOW / 1000)
-//         });
-//     }
-//
-//     next();
-// }
+// הפעלת CORS
+app.use(require('cors')());
 
-app.use(cors());
-// app.use(rateLimiter); // *** REMOVED ***
-
-// Add request logging middleware to see all incoming requests
+// Middleware לתיעוד בקשות
 app.use((req, res, next) => {
     const method = req.method;
     const url = req.url;
-    const contentType = req.get('Content-Type') || 'none';
-    console.log(`[REQUEST] ${method} ${url} (Content-Type: ${contentType})`);
-
-    // Log query parameters if present
-    if (Object.keys(req.query).length > 0) {
-        console.log(`[REQUEST QUERY] ${JSON.stringify(req.query)}`);
-    }
-
-    // Log user agent
-    const userAgent = req.get('User-Agent') || 'unknown';
-    console.log(`[REQUEST AGENT] ${userAgent.substring(0, 100)}${userAgent.length > 100 ? '...' : ''}`);
-
-    // Continue to next middleware
+    console.log(`[בקשה] ${method} ${url}`);
     next();
 });
 
-// Fetch with retries
+/**
+ * פונקציית עזר: fetch עם ניסיונות חוזרים במקרה של כישלון
+ */
 async function fetchWithRetries(url, options, maxRetries = 3) {
     let lastError;
     let retryDelay = 1000;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`Attempt ${attempt}/${maxRetries} for URL: ${url.substring(0, 100)}...`);
-
+            console.log(`ניסיון ${attempt}/${maxRetries} עבור כתובת: ${url.substring(0, 100)}...`);
             const response = await fetch(url, options);
-
-            // If we hit a rate limit, wait and retry
+            
             if (response.status === 429) {
-                const retryAfter = response.headers.get('retry-after');
-                const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : retryDelay;
-                console.log(`Rate limited by source. Waiting ${waitTime}ms before retry`);
-                await setTimeout(waitTime);
-
-                // Increase retry delay for next attempt
+                console.log(`הגבלת קצב. המתנה ${retryDelay}ms לפני ניסיון חוזר`);
+                await setTimeout(retryDelay);
                 retryDelay *= 2;
                 continue;
             }
-
+            
             return response;
         } catch (err) {
             lastError = err;
-            console.error(`Fetch attempt ${attempt} failed:`, err.message);
-
+            console.error(`ניסיון fetch ${attempt} נכשל:`, err.message);
+            
             if (attempt < maxRetries) {
-                console.log(`Waiting ${retryDelay}ms before retry...`);
+                console.log(`המתנה ${retryDelay}ms לפני ניסיון חוזר...`);
                 await setTimeout(retryDelay);
-                retryDelay *= 2; // Exponential backoff
+                retryDelay *= 2;
             }
         }
     }
-
-    throw lastError || new Error('Failed to fetch after multiple attempts');
+    
+    throw lastError || new Error('נכשל לבצע fetch אחרי מספר ניסיונות');
 }
 
-// מייבא את מנהל ה-headers המשופר ואת מנהל הפרוקסי
-const headersManager = require('./headers-manager');
-const proxyRotator = require('./proxy-rotator');
-
-// Add a YouTube-specific fetch helper
-async function fetchFromYouTube(url, options, maxRetries = 3) {
-    // הוסף requestId כפרמטר לפונקציה
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-
-    // יצירת מזהה סשן קבוע לבקשה הנוכחית (לשימוש עקבי ב-headers)
-    const sessionId = Date.now().toString(36);
-
-    // YouTube-specific error fix: יצירת headers מתקדמים שנראים כמו דפדפן אמיתי
-    // בכל ניסיון נשתמש ב-headers שונים במקצת כדי להקשות על זיהוי
-    const getYouTubeOptions = () => {
-        // שמירה על User-Agent עקבי לאורך ניסיונות חוזרים באותה בקשה
-        // אבל שונה בין בקשות שונות
-        const baseUserAgent = options.headers?.['User-Agent'] ||
-                             headersManager.getRandomValue(headersManager.userAgents);
-
-        // יצירת headers מתקדמים עם אקראיות מבוקרת
-        const advancedHeaders = headersManager.generateYouTubeHeaders({
-            userAgent: baseUserAgent,
-            rangeHeader: options.headers?.['Range'],
-            // שימוש ב-referer ו-origin אקראיים אבל עקביים לאורך הניסיונות
-            referer: `https://www.youtube.com/watch?v=${sessionId}`,
-            origin: 'https://www.youtube.com'
-        });
-
-        // יצירת אובייקט האפשרויות הבסיסי
-        const youtubeOptions = {
-            ...options,
-            headers: advancedHeaders,
-            // Set a timeout of 15 seconds for the fetch operation - *** REMOVED ***
-            // timeout: 15000 // 15 second timeout before aborting
-        };
-
-        // הוספת פרוקסי אם הוא מופעל - *** הוסר ***
-        // const proxyAgent = proxyRotator.createProxyAgent();
-        // if (proxyAgent) {
-        //     youtubeOptions.agent = proxyAgent;
-        //     console.log(`[${requestId}] Using proxy for this request`);
-        // }
-
-        return youtubeOptions;
-    };
-
-    let lastError;
-    let retryDelay = 1000;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`YouTube fetch attempt ${attempt}/${maxRetries} for: ${url.substring(0, 60)}...`);
-
-            // Check if URL has expired parameters
-            const urlObj = new URL(url);
-            if (urlObj.hostname.includes('googlevideo.com')) {
-                // YouTube URL validity is approximately 350 minutes, so we'll skip expiration checks
-                console.log(`[${requestId}] Processing YouTube video URL`);
-            }
-
-            // יצירת אפשרויות חדשות עם headers מעט שונים בכל ניסיון
-            const youtubeOptions = getYouTubeOptions();
-
-            // הוסף יותר לוגים
-            console.log(`[${requestId}] Full URL being fetched: ${url}`);
-            // הסתרת פרטי ה-headers המלאים מהלוגים למניעת דליפת מידע
-            const sanitizedOptions = {
-                ...youtubeOptions,
-                headers: {
-                    'User-Agent': youtubeOptions.headers['User-Agent'].substring(0, 30) + '...',
-                    'Other-Headers': 'Hidden for security'
-                }
-            };
-            console.log(`[${requestId}] YouTube options: ${JSON.stringify(sanitizedOptions, null, 2)}`);
-
-            // הוספת השהייה אקראית קטנה לפני הבקשה כדי לדמות התנהגות אנושית
-            if (attempt > 1) {
-                const randomDelay = Math.floor(Math.random() * 500) + 100; // 100-600ms
-                await setTimeout(randomDelay);
-            }
-
-            const response = await fetch(url, youtubeOptions);
-
-            // הוסף יותר לוגים לטיפול בשגיאות
-            console.log(`[${requestId}] Response status: ${response.status}`);
-
-            if (response.status === 404) {
-                console.error(`[${requestId}] YouTube URL not found (404). URL: ${url.substring(0, 100)}...`);
-                throw new Error('YouTube resource not found (404). The URL might be invalid or expired.');
-            }
-
-            if (response.status === 429) {
-                console.warn(`Rate limited by YouTube (429). Waiting ${retryDelay}ms before retry...`);
-                await setTimeout(retryDelay);
-                retryDelay *= 2; // Exponential backoff
-                continue;
-            }
-
-            if (!response.ok) {
-                throw new Error(`YouTube responded with ${response.status} ${response.statusText}`);
-            }
-
-            return response;
-        } catch (err) {
-            lastError = err;
-            console.error(`YouTube fetch attempt ${attempt} failed:`, err.message);
-
-            if (attempt < maxRetries) {
-                console.log(`Waiting ${retryDelay}ms before retry...`);
-                await setTimeout(retryDelay);
-                retryDelay *= 2; // Exponential backoff
-            }
-        }
-    }
-
-    throw lastError || new Error('Failed to fetch from YouTube after multiple attempts');
-}
-
-// Add maximum file size check for streaming - *** REMOVED ***
-// const MAX_FILE_SIZE = 25 * 1024 * 1024; // Limit to 25MB for Render free tier
-let totalBytesStreamed = 0; // Keep this for logging purposes
-
-// Modify the proxy endpoint to include size limits and better streaming
-app.get('/proxy', async (req, res) => {
-    const videoUrl = req.query.url;
-    const userAgent = req.headers['user-agent'] || 'Mozilla/5.0';
-    const startTime = Date.now();
-
-    if (!videoUrl) {
-        return res.status(400).json({ error: 'Missing url parameter' });
-    }
-
-    // Check if this is a YouTube website URL rather than a media/CDN URL
-    if (videoUrl.includes('youtube.com/watch') ||
-        videoUrl.includes('youtu.be/') ||
-        videoUrl.match(/youtube\.com\/(shorts|playlist|channel|c\/)/)) {
-
-        console.log(`Redirecting user to YouTube URL: ${videoUrl}`);
-        return res.redirect(302, videoUrl);
-    }
-
-    // Add support for partial content requests (Range header)
-    const rangeHeader = req.headers.range;
-    let rangeStart = 0;
-    let rangeEnd = null;
-
-    if (rangeHeader) {
-        const rangeParts = rangeHeader.replace('bytes=', '').split('-');
-        rangeStart = parseInt(rangeParts[0], 10) || 0;
-        if (rangeParts[1] && rangeParts[1].trim() !== '') {
-            rangeEnd = parseInt(rangeParts[1], 10);
-        }
-    }
-
-    // Reset byte counter for this request
-    totalBytesStreamed = 0;
-
-    // Add request ID for tracking
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-    console.log(`[${requestId}] Processing request for: ${videoUrl.substring(0, 100)}...`);
-
-    // Set up keepalive checker for the client connection
-    const keepAliveInterval = setInterval(() => {
-        if (!res.writableEnded) {
-            // If connection is still open but taking long, write a comment to keep it alive
-            try {
-                res.write('\n');
-            } catch (err) {
-                // If we can't write, the connection is probably already closed
-                clearInterval(keepAliveInterval);
-            }
-        } else {
-            clearInterval(keepAliveInterval);
-        }
-    }, 10000); // Check every 10 seconds
-
-    // Set a timeout for the entire request - *** REMOVED ***
-    // const requestTimeout = setTimeout(() => {
-    //     if (!res.writableEnded) {
-    //         console.error(`[${requestId}] Request timed out after 120 seconds`);
-    //         clearInterval(keepAliveInterval);
-    //
-    //         // Only attempt to write an error if headers haven't been sent
-    //         if (!res.headersSent) {
-    //             return res.status(504).json({
-    //                 error: 'Gateway Timeout',
-    //                 message: 'Request took too long to complete'
-    //             });
-    //         } else {
-    //             try {
-    //                 res.end();
-    //             } catch (e) {
-    //                 console.error(`[${requestId}] Error ending response after timeout:`, e);
-    //             }
-    //         }
-    //     }
-    // }, 120000); // 120 second overall timeout
-
-    try {
-        // Check if it's a YouTube URL
-        const isYouTubeUrl = videoUrl.includes('googlevideo.com') ||
-                             videoUrl.includes('youtube.com') ||
-                             videoUrl.includes('youtu.be');
-
-        console.log(`[${requestId}] URL identified as ${isYouTubeUrl ? 'YouTube' : 'generic'} URL`);
-
-        // שימוש במנהל ה-headers המשופר ליצירת headers מתקדמים
-        const fetchOptions = {
-            headers: headersManager.generateAdvancedHeaders({
-                userAgent: userAgent,
-                rangeHeader: rangeHeader || 'bytes=0-',
-                isYouTubeRequest: isYouTubeUrl
-            })
-        };
-
-        // הוספת לוג מוסתר של ה-headers (ללא חשיפת כל הפרטים)
-        const sanitizedHeaders = {
-            'User-Agent': fetchOptions.headers['User-Agent'].substring(0, 30) + '...',
-            'Accept': fetchOptions.headers['Accept'],
-            'Range': fetchOptions.headers['Range'],
-            'Other-Headers': '(hidden for security)'
-        };
-
-        console.log(`[${requestId}] Fetch options:`, JSON.stringify({...fetchOptions, headers: sanitizedHeaders}, null, 2));
-
-        // Use YouTube-specific fetch for YouTube URLs, regular fetch otherwise
-        const response = isYouTubeUrl
-            ? await fetchFromYouTube(videoUrl, fetchOptions)
-            : await fetchWithRetries(videoUrl, fetchOptions);
-
-        // Log response details
-        console.log(`[${requestId}] Response status: ${response.status}`);
-
-        // Check for content length
-        const contentLength = response.headers.get('content-length');
-        const estimatedSize = contentLength ? parseInt(contentLength, 10) : null; // Keep for logging
-
-        // Size limit check removed
-        // if (estimatedSize && estimatedSize > MAX_FILE_SIZE) {
-        //     console.warn(`[${requestId}] Content length (${estimatedSize} bytes) exceeds maximum size limit (${MAX_FILE_SIZE} bytes)`);
-        //     clearInterval(keepAliveInterval);
-        //     clearTimeout(requestTimeout);
-        //     return res.status(413).json({
-        //         error: 'Payload Too Large',
-        //         message: `File size (${Math.round(estimatedSize/1024/1024)}MB) exceeds maximum size limit (${Math.round(MAX_FILE_SIZE/1024/1024)}MB)`,
-        //         solution: 'Try a different quality or format'
-        //     });
-        // }
-
-        // Set proper status code for range requests
-        if (rangeHeader && response.status === 206) {
-            res.status(206);
-        }
-
-        // Copy all response headers to our response
-        for (const [key, value] of response.headers.entries()) {
-            // Skip headers that might cause issues
-            if (!['content-encoding', 'content-length', 'connection', 'transfer-encoding'].includes(key.toLowerCase())) {
-                try {
-                    res.setHeader(key, value);
-                } catch (headerErr) {
-                    console.error(`Error setting header ${key}: ${headerErr.message}`);
-                    // Continue despite header error
-                }
-            }
-        }
-
-        // Ensure we set the correct content type
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-            res.setHeader('Content-Type', contentType);
-        } else {
-            res.setHeader('Content-Type', 'application/octet-stream');
-        }
-
-        // Handle streaming with explicit error handling and size limits
-        try {
-            // Create a transform stream that monitors size
-            const { Transform } = require('stream');
-            const sizeMonitorStream = new Transform({
-                transform(chunk, encoding, callback) {
-                    totalBytesStreamed += chunk.length; // Keep tracking for logs
-
-                    // Size limit check removed during streaming
-                    // if (totalBytesStreamed > MAX_FILE_SIZE) {
-                    //     console.warn(`[${requestId}] Size limit exceeded during streaming. Closing connection after ${totalBytesStreamed} bytes`);
-                    //     this.destroy(new Error(`Size limit of ${MAX_FILE_SIZE} bytes exceeded`));
-                    //     return;
-                    // }
-
-                    // Pass the chunk through
-                    this.push(chunk);
-                    callback();
-                }
-            });
-
-            // Handle errors on the size monitor stream
-            sizeMonitorStream.on('error', (err) => {
-                console.error(`[${requestId}] Size monitor stream error:`, err);
-                if (!res.writableEnded) {
-                    try {
-                        res.end();
-                    } catch (e) {
-                        console.error(`[${requestId}] Error ending response after size monitor error:`, e);
-                    }
-                }
-            });
-
-            // Handle errors on the source body stream
-            response.body.on('error', (err) => {
-                console.error(`[${requestId}] Source stream error:`, err);
-                clearInterval(keepAliveInterval);
-                // clearTimeout(requestTimeout); // *** REMOVED ***
-
-                if (!res.writableEnded) {
-                    try {
-                        res.end();
-                    } catch (e) {
-                        console.error(`[${requestId}] Error ending response after source error:`, e);
-                    }
-                }
-            });
-
-            // Handle end of stream
-            response.body.on('end', () => {
-                console.log(`[${requestId}] Stream completed successfully. Total bytes: ${totalBytesStreamed}`);
-                clearInterval(keepAliveInterval);
-                // clearTimeout(requestTimeout); // *** REMOVED ***
-            });
-
-            // Pipe through the monitor and to the response
-            response.body
-                .pipe(sizeMonitorStream)
-                .pipe(res)
-                .on('finish', () => {
-                    const duration = Date.now() - startTime;
-                    console.log(`[${requestId}] Response finished in ${duration}ms. Total bytes: ${totalBytesStreamed}`);
-                    clearInterval(keepAliveInterval);
-                    // clearTimeout(requestTimeout); // *** REMOVED ***
-                })
-                .on('error', (err) => {
-                    console.error(`[${requestId}] Response stream error:`, err);
-                    clearInterval(keepAliveInterval);
-                    // clearTimeout(requestTimeout); // *** REMOVED ***
-                });
-
-            // Log success with limited URL
-            const urlPreview = videoUrl.length > 60 ?
-                `${videoUrl.substring(0, 30)}...${videoUrl.substring(videoUrl.length - 30)}` :
-                videoUrl;
-            console.log(`[${requestId}] Successfully piping response for: ${urlPreview}`);
-
-        } catch (streamSetupErr) {
-            console.error(`[${requestId}] Error setting up stream:`, streamSetupErr);
-            clearInterval(keepAliveInterval);
-            // clearTimeout(requestTimeout); // *** REMOVED ***
-
-            // Only send error if headers have not been sent
-            if (!res.headersSent) {
-                return res.status(500).json({ error: `Stream setup error: ${streamSetupErr.message}` });
-            } else if (!res.writableEnded) {
-                try {
-                    res.end();
-                } catch (e) {
-                    console.error(`[${requestId}] Error ending response after stream setup error:`, e);
-                }
-            }
-        }
-
-    } catch (err) {
-        // Clean up intervals/timeouts on error
-        clearInterval(keepAliveInterval);
-        // clearTimeout(requestTimeout); // *** REMOVED ***
-
-        console.error(`[${requestId}] Proxy error:`, err);
-        console.error(`[${requestId}] Error stack:`, err.stack);
-
-        // Provide detailed error information
-        const errorDetails = {
-            message: err.message,
-            type: err.name || 'Unknown',
-            code: err.code || 'None',
-            timestamp: new Date().toISOString()
-        };
-
-        // Check for YouTube-specific errors
-        if (err.message.includes('URL has expired')) {
-            return res.status(410).json({
-                error: 'YouTube URL has expired',
-                details: errorDetails,
-                solution: 'Please refresh the page and try again to get a fresh URL'
-            });
-        }
-
-        // Send appropriate error based on the error type
-        if (err.code === 'ENOTFOUND') {
-            return res.status(404).json({
-                error: 'Resource not found or host unreachable',
-                details: errorDetails
-            });
-        } else if (err.type === 'request-timeout' || err.name === 'AbortError') {
-            return res.status(504).json({
-                error: 'Request timeout',
-                details: errorDetails
-            });
-        } else if (err.message.includes('429')) {
-            return res.status(429).json({
-                error: 'Too Many Requests from source API',
-                retryAfter: 60, // Suggest retry after 1 minute
-                details: errorDetails
-            });
-        } else if (err.message.includes('403')) {
-            return res.status(403).json({
-                error: 'Resource access forbidden (403)',
-                details: errorDetails,
-                solution: 'Try using a different video format or quality'
-            });
-        } else {
-            // Log as much detail as possible about the error
-            console.error(`[${requestId}] Unhandled error details:`, {
-                message: err.message,
-                name: err.name,
-                code: err.code,
-                errno: err.errno,
-                stack: err.stack && err.stack.split('\n')
-            });
-
-            res.status(500).json({
-                error: `Proxy server error: ${err.message}`,
-                errorType: err.name || 'Unknown',
-                errorCode: err.code || 'None',
-                timestamp: new Date().toISOString(),
-                solution: 'Try refreshing the page to get a fresh URL or try a different video'
-            });
-        }
-    }
-});
-
-// Updated download endpoint using youtube-search-download3 API for MP4 video and direct streaming
-app.get('/download', async (req, res) => {
-    const videoId = req.query.id;
-    // Fetching MP4 video at 720p resolution
-    const format = 'mp4';
-    const resolution = '720'; // Changed from '360' to '720'
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-
-    if (!videoId) {
-        return res.status(400).json({
-            success: false,
-            error: 'חסר פרמטר חובה: id (מזהה סרטון)',
-            example: '/download?id=YOUTUBE_VIDEO_ID' // Format/resolution are fixed now
-        });
-    }
-
-    console.log(`[${requestId}] Direct video download request for video ID: ${videoId}, format: ${format}, resolution: ${resolution}`);
-
-    try {
-        // Construct the API URL for youtube-search-download3
-        const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the same key for now
-        const rapidApiHost = 'youtube-search-download3.p.rapidapi.com';
-        // Construct URL for MP4 video download
-        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${format}&resolution=${resolution}`;
-
-        console.log(`[${requestId}] Calling API to get download link: ${apiUrl}`);
-
-        // Step 1: Fetch the download metadata from the API
-        const apiMetadataResponse = await fetchWithRetries(apiUrl, {
-            method: 'GET',
-            headers: {
-                'x-rapidapi-key': rapidApiKey,
-                'x-rapidapi-host': rapidApiHost
-            },
-            // timeout: 20000 // Shorter timeout for metadata request - *** REMOVED ***
-        });
-
-        if (!apiMetadataResponse.ok) {
-            const errorText = await apiMetadataResponse.text();
-            console.error(`[${requestId}] API metadata error: ${apiMetadataResponse.status} ${apiMetadataResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
-            let errorJson = {};
-            try { errorJson = JSON.parse(errorText); } catch(e) {}
-            throw new Error(`Failed to fetch metadata from download API: ${apiMetadataResponse.status} - ${errorJson.message || apiMetadataResponse.statusText}`);
-        }
-
-        // Step 2: Parse the JSON response to get the actual download link
-        const metadata = await apiMetadataResponse.json();
-        const actualDownloadUrl = metadata?.url; // Corrected property name from 'link' to 'url'
-
-        if (!actualDownloadUrl) {
-            console.error(`[${requestId}] API response missing download link. Response:`, JSON.stringify(metadata, null, 2));
-            throw new Error('Download API did not return a valid download link.');
-        }
-
-        console.log(`[${requestId}] Received download link: ${actualDownloadUrl.substring(0, 100)}...`);
-
-        // Step 3: Fetch the actual video file from the obtained URL
-        console.log(`[${requestId}] Fetching actual video content...`);
-        // Use the /proxy endpoint logic for fetching the actual video content
-        // This reuses the advanced headers, retries, and proxy logic
-        const videoResponse = await fetchFromYouTube(actualDownloadUrl, { // Use fetchFromYouTube as it handles googlevideo links well
-            method: 'GET',
-            headers: headersManager.generateAdvancedHeaders({ // Reuse header generation
-                userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
-                isYouTubeRequest: true // Treat it like a YouTube request
-            }),
-            // timeout: 120000 // Longer timeout for the actual download - *** REMOVED ***
-        });
-
-        if (!videoResponse.ok) {
-            console.error(`[${requestId}] Error fetching actual video content: ${videoResponse.status} ${videoResponse.statusText}`);
-            throw new Error(`Failed to fetch video content: ${videoResponse.status} ${videoResponse.statusText}`);
-        }
-
-        console.log(`[${requestId}] Video content response OK (${videoResponse.status}). Streaming download...`);
-
-        // Step 4: Determine filename (use metadata title if available)
-        let filename = metadata?.title ? `${metadata.title}.${format}` : `${videoId}_${resolution}p.${format}`;
-        // Clean filename
-        filename = filename.replace(/[<>:"/\\|?*]+/g, '_').replace(/\s+/g, '_'); // Replace spaces too
-
-        console.log(`[${requestId}] Filename: ${filename}`);
-
-        // Step 5: Set headers for the download
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-
-        // Copy relevant headers from the *video* response
-        const contentType = videoResponse.headers.get('content-type') || `video/${format}`;
-        res.setHeader('Content-Type', contentType);
-
-        const contentLength = videoResponse.headers.get('content-length');
-        if (contentLength) {
-            res.setHeader('Content-Length', contentLength);
-            console.log(`[${requestId}] Content-Length: ${contentLength}`);
-        } else {
-            console.warn(`[${requestId}] Content-Length header missing from video response.`);
-        }
-
-        // Step 6: Pipe the video stream to the client
-        videoResponse.body.pipe(res).on('error', (streamErr) => {
-            console.error(`[${requestId}] Error piping video stream to client:`, streamErr);
-            if (!res.writableEnded) {
-                res.end();
-            }
-        }).on('finish', () => {
-            console.log(`[${requestId}] Video stream finished successfully.`);
-        });
-
-    } catch (error) {
-        console.error(`[${requestId}] Download error:`, error);
-        // Send a JSON error response if headers haven't been sent
-        if (!res.headersSent) {
-            res.status(500).json({
-                success: false,
-                error: `שגיאה בהורדה: ${error.message}`,
-                requestId: requestId
-            });
-        } else {
-            // If headers are sent, we can only try to end the connection
-            if (!res.writableEnded) {
-                res.end();
-            }
-        }
-        /* // Optional: Keep HTML error page if preferred
-        res.status(500).send(`
-            <html>
-                <head>
-            success: false,
-            error: `שגיאה בהורדה: ${error.message}`,
-            requestId: requestId
-        });
-        /* // Optional: Keep HTML error page if preferred
-        res.status(500).send(`
-            <html>
-                <head>
-                    <title>שגיאת הורדה</title>
-                    <meta charset="UTF-8">
-                    <style>
-                        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f0f0f0; text-align: right; direction: rtl; }
-                        .container { max-width: 600px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                        h1 { color: #c00; margin-top: 0; }
-                        .back-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #c00; color: white; text-decoration: none; border-radius: 4px; }
-                        .back-btn:hover { background: #900; }
-                        .error-details { background: #ffe6e6; padding: 15px; border-radius: 4px; margin-top: 20px; }
-                        code { background: #f8f8f8; padding: 2px 5px; border-radius: 3px; font-family: monospace; direction: ltr; display: inline-block; }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>שגיאה בהורדת האודיו</h1>
-                        <p>${error.message || 'שגיאה לא ידועה התרחשה בעת ניסיון להוריד את האודיו'}</p>
-                        <div class="error-details">
-                            <p><strong>מזהה סרטון:</strong> <code>${videoId}</code></p>
-                            <p><strong>מזהה בקשה:</strong> <code>${requestId}</code></p>
-                            <p><strong>זמן השגיאה:</strong> ${new Date().toLocaleString('he-IL')}</p>
-                        </div>
-                        <a href="/" class="back-btn">חזרה לדף הראשי</a>
-                    </div>
-                </body>
-            </html>
-        `);
-        */ // Close the multi-line comment
-    }
-});
-
-
-// Helper function to format file size
+/**
+ * פונקציית עזר: פורמט לגודל קובץ
+ */
 function formatFileSize(bytes) {
-    if (!bytes || isNaN(bytes)) return 'Unknown';
+    if (!bytes || isNaN(bytes)) return 'לא ידוע';
 
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     if (bytes === 0) return '0 Bytes';
@@ -744,427 +110,248 @@ function formatFileSize(bytes) {
     return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
 }
 
-// Fix missing rate limit cleanup function that was accidentally removed - *** REMOVED ***
-// Clear rate limit counts every minute
-// setInterval(() => {
-//     console.log('Clearing rate limit counts');
-//     Object.keys(requestCounts).forEach(ip => {
-//         requestCounts[ip] = 0;
-//     });
-// }, RATE_LIMIT_WINDOW);
+/**
+ * פונקציית עזר: המרת שניות לפורמט SRT (HH:MM:SS,mmm)
+ */
+function formatSrtTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const millis = Math.floor((seconds % 1) * 1000);
 
-// הוספת נקודת קצה לניהול הפרוקסי (מוגנת בסיסמה פשוטה)
-app.get('/proxy-manager', (req, res) => {
-    // בדיקת סיסמה פשוטה (יש להחליף במנגנון אבטחה חזק יותר בסביבת ייצור)
-    const password = req.query.password;
-    if (password !== 'proxy123') {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+}
 
-    const action = req.query.action;
+/**
+ * פונקציית עזר: שליחת בקשת multipart form
+ */
+async function sendMultipartFormRequest(url, formData, headers = {}) {
+    return new Promise((resolve, reject) => {
+        // קבלת ה-headers של הטופס והוספת ה-headers המותאמים
+        const formHeaders = formData.getHeaders();
+        const combinedHeaders = { ...formHeaders, ...headers };
 
-    switch (action) {
-        case 'enable':
-            proxyRotator.setProxyEnabled(true);
-            return res.json({ success: true, message: 'Proxy rotation enabled' });
+        // פירוק ה-URL
+        const parsedUrl = new URL(url);
 
-        case 'disable':
-            proxyRotator.setProxyEnabled(false);
-            return res.json({ success: true, message: 'Proxy rotation disabled' });
-
-        case 'add':
-            const { host, port, username, password } = req.query;
-            if (!host || !port) {
-                return res.status(400).json({ error: 'Missing host or port' });
-            }
-            proxyRotator.addProxy(host, parseInt(port), username, password);
-            return res.json({ success: true, message: 'Proxy added' });
-
-        case 'clear':
-            proxyRotator.clearProxies();
-            return res.json({ success: true, message: 'All proxies cleared' });
-
-        case 'list':
-            const proxies = proxyRotator.getProxyList();
-            return res.json({ success: true, proxies });
-
-        default:
-            return res.status(400).json({ error: 'Invalid action', validActions: ['enable', 'disable', 'add', 'clear', 'list'] });
-    }
-});
-
-// הערה: הסרנו את המשתנה rateLimitSeconds שלא היה בשימוש
-
-// Serve the main HTML page from index.html
-app.get('/', (req, res) => {
-    const indexPath = path.join(__dirname, 'index.html');
-    fs.readFile(indexPath, 'utf8', (err, data) => {
-        if (err) {
-            console.error('Error reading index.html:', err);
-            return res.status(500).send('Error loading the page.');
-        }
-        res.setHeader('Content-Type', 'text/html');
-        res.send(data);
-    });
-});
-
-// Custom 404 handler
-app.use((req, res) => {
-    console.log(`[404] No handler found for ${req.method} ${req.url}`);
-    res.status(404).send(`
-        <html>
-            <head>
-                <title>404 - Not Found</title>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; padding: 0; background: #f0f0f0; }
-                    h1 { color: #c00; font-size: 32px; }
-                    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                    code { background: #f8f8f8; padding: 2px 6px; border-radius: 3px; font-family: monospace; border: 1px solid #ddd; }
-                    .available-routes { margin-top: 20px; background: #f8f8f8; padding: 20px; border-radius: 8px; }
-                    ul { padding-left: 20px; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>404 - Not Found</h1>
-                    <p>The requested resource <code>${req.url}</code> was not found on this server.</p>
-
-                    <div class="available-routes">
-                        <h2>Available Routes</h2>
-                        <ul>
-                            <li><code>GET /</code> - Home page</li>
-                            <li><code>GET /proxy?url=URL</code> - Proxy endpoint</li>
-                            <!-- Removed /youtube-info -->
-                            <li><code>GET /download?id=VIDEO_ID</code> - Download audio</li>
-                            <li><code>GET /transcribe?id=VIDEO_ID&format=json|srt|txt</code> - Transcribe video</li>
-                            <li><code>GET /health</code> - Health check</li>
-                            <li><code>GET /test-proxy?url=URL</code> - Test proxy</li>
-                        </ul>
-                    </div>
-                </div>
-            </body>
-        </html>
-    `);
-});
-
-// Default port listener
-app.listen(PORT, () => {
-    console.log('----------------------------------------------------');
-    console.log(`Proxy server STARTED and listening on port ${PORT}`);
-    console.log('Available routes:');
-    console.log('  - GET /                                      Home page');
-    console.log('  - GET /proxy?url=URL                         Proxy endpoint');
-    // console.log('  - GET /youtube-info?id=VIDEO_ID              Get video formats'); // Removed
-    console.log('  - GET /download?id=VIDEO_ID                  Download video'); // Updated description
-    console.log('  - GET /transcribe?id=VIDEO_ID&format=FORMAT  Transcribe video');
-    console.log('  - GET /health                                Health check');
-    console.log('  - GET /test-proxy?url=URL                    Test proxy');
-    console.log('  - GET /proxy-manager?password=proxy123&action=ACTION  Manage proxies');
-    console.log('----------------------------------------------------');
-
-    // הדפסת הודעה שמציינת שמנגנון הפרוקסי מופעל
-    console.log('\n=== מנגנון התגברות על חסימות יוטיוב מופעל ===');
-    console.log('משתמש ב-headers מתקדמים וסיבוב פרוקסי אוטומטי');
-    console.log(`מספר שרתי פרוקסי מוגדרים: ${proxyRotator.getProxyList().length}`);
-    console.log('ניתן לנהל את הפרוקסי דרך נקודת הקצה /proxy-manager');
-    console.log('=== מערכת מוכנה לשימוש ===\n');
-});
-
-// Add health check endpoint to verify server is running
-app.get('/health', (req, res) => {
-    console.log('Health check performed');
-    return res.status(200).json({
-        status: 'OK',
-        timestamp: new Date().toISOString(),
-        endpoints: ['/proxy', '/transcribe', '/download', '/proxy-manager', '/test-proxy'],
-        proxy: {
-            enabled: proxyRotator.getProxyList().length > 0,
-            count: proxyRotator.getProxyList().length
-        }
-    });
-});
-
-// Add debug endpoint to test proxy functionality
-app.get('/test-proxy', async (req, res) => {
-    const url = req.query.url || 'https://api.ipify.org?format=json';
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
-
-    try {
-        console.log(`[${requestId}] Testing proxy with URL: ${url}`);
-
-        // יצירת אפשרויות עם פרוקסי
-        const fetchOptions = {
-            headers: headersManager.generateAdvancedHeaders({
-                isYouTubeRequest: url.includes('youtube.com')
-            }),
-            timeout: 10000
+        // הכנת אפשרויות הבקשה
+        const options = {
+            method: 'POST',
+            hostname: parsedUrl.hostname,
+            path: parsedUrl.pathname + parsedUrl.search,
+            headers: combinedHeaders
         };
 
-        // הוספת פרוקסי אם הוא מופעל
-        const proxyAgent = proxyRotator.createProxyAgent();
-        if (proxyAgent) {
-            fetchOptions.agent = proxyAgent;
-            console.log(`[${requestId}] Using proxy for this test request`);
-        } else {
-            console.log(`[${requestId}] No proxy used for this test request`);
-        }
+        // בחירת מודול http או https בהתאם ל-URL
+        const httpModule = parsedUrl.protocol === 'https:' ? https : http;
 
-        // שליחת הבקשה
-        const response = await fetch(url, fetchOptions);
-        const data = await response.text();
+        // יצירת הבקשה
+        const req = httpModule.request(options, (res) => {
+            const chunks = [];
 
-        // ניסיון לפרסר כ-JSON אם אפשר
-        let jsonData;
-        try {
-            jsonData = JSON.parse(data);
-        } catch (e) {
-            jsonData = null;
-        }
+            res.on('data', (chunk) => {
+                chunks.push(chunk);
+            });
 
-        return res.json({
-            success: true,
-            url: url,
-            status: response.status,
-            headers: Object.fromEntries(response.headers.entries()),
-            data: jsonData || data.substring(0, 500),
-            proxy: {
-                used: !!proxyAgent,
-                count: proxyRotator.getProxyList().length
-            }
+            res.on('end', () => {
+                const responseBody = Buffer.concat(chunks).toString();
+                let data;
+
+                // ניסיון לפרסר כ-JSON אם אפשר
+                try {
+                    data = JSON.parse(responseBody);
+                } catch (e) {
+                    data = responseBody;
+                }
+
+                resolve({ response: res, data });
+            });
         });
-    } catch (error) {
-        console.error(`[${requestId}] Test proxy error:`, error);
-        return res.status(500).json({
-            success: false,
-            error: error.message,
-            url: url,
-            proxy: {
-                used: proxyRotator.getProxyList().length > 0,
-                count: proxyRotator.getProxyList().length
-            }
-        });
-    }
-});
 
-// Add transcribe endpoint that downloads audio and then transcribes it
+        req.on('error', (error) => {
+            reject(error);
+        });
+
+        // העברת נתוני הטופס לבקשה
+        formData.pipe(req);
+    });
+}
+
+/**
+ * נקודת קצה ראשית לתמלול
+ */
 app.get('/transcribe', async (req, res) => {
+    const videoUrl = req.query.url;
     const videoId = req.query.id;
-    const format = req.query.format || 'json'; // 'json', 'srt', or 'txt'
+    const format = req.query.format || 'srt'; // ברירת מחדל ל-SRT
     const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
-    console.log(`[${requestId}] ========== STARTING TRANSCRIPTION PROCESS ==========`);
-    console.log(`[${requestId}] Video ID: ${videoId}, format: ${format}`);
-
-    if (!videoId) {
+    console.log(`[${requestId}] ========== מתחיל תהליך תמלול ==========`);
+    
+    // טיפול בכתובת או מזהה וידאו
+    let actualVideoId = videoId;
+    
+    if (videoUrl && !videoId) {
+        // חילוץ מזהה וידאו מכתובת אם סופקה
+        try {
+            const urlObj = new URL(videoUrl);
+            if (urlObj.hostname.includes('youtube.com')) {
+                actualVideoId = urlObj.searchParams.get('v');
+            } else if (urlObj.hostname.includes('youtu.be')) {
+                actualVideoId = urlObj.pathname.substring(1);
+            }
+        } catch (error) {
+            console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
+        }
+    }
+    
+    if (!actualVideoId) {
         return res.status(400).json({
             success: false,
-            error: 'חסר פרמטר חובה: id (מזהה סרטון)',
-            example: '/transcribe?id=YOUTUBE_VIDEO_ID&format=json|srt|txt'
+            error: 'חסר פרמטר חובה: id או url (מזהה סרטון או כתובת)',
+            example: '/transcribe?id=YOUTUBE_VIDEO_ID או /transcribe?url=YOUTUBE_URL'
         });
     }
+    
+    console.log(`[${requestId}] מזהה סרטון: ${actualVideoId}, פורמט: ${format}`);
 
     try {
-        // STEP 1: Download VIDEO using the new API (youtube-search-download3) for transcription
-        console.log(`[${requestId}] STEP 1: Downloading video (MP4, 720p) using youtube-search-download3`);
+        // שלב 1: הורדת וידאו באמצעות RapidAPI
+        console.log(`[${requestId}] שלב 1: מוריד סרטון (MP4) באמצעות RapidAPI`);
 
-        const rapidApiKey = 'b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28'; // Use the same key
-        const rapidApiHost = 'youtube-search-download3.p.rapidapi.com'; // *** Use the NEW API host ***
-        const videoFormat = 'mp4'; // Changed from 'mp3'
-        const videoResolution = '720'; // Added resolution
-        const apiUrl = `https://${rapidApiHost}/v1/download?v=${videoId}&type=${videoFormat}&resolution=${videoResolution}`; // Updated API URL
+        const videoFormat = 'mp4';
+        const videoResolution = '360'; // רזולוציה נמוכה יותר להורדה מהירה יותר
+        const apiUrl = `https://${RAPIDAPI_HOST}/v1/download?v=${actualVideoId}&type=${videoFormat}&resolution=${videoResolution}`;
 
-        const tempFileName = path.join(TEMP_DIR, `${videoId}_${Date.now()}.${videoFormat}`); // Changed extension to .mp4
-        let apiMetadata = { title: `Video ${videoId}`, duration: 0 }; // Default metadata
+        const tempFileName = path.join(TEMP_DIR, `${actualVideoId}_${Date.now()}.${videoFormat}`);
+        let apiMetadata = { title: `Video ${actualVideoId}`, duration: 0 };
 
-        try {
-            // Step 1.1: Get the video download link from the API
-            console.log(`[${requestId}] Calling API to get video download link: ${apiUrl}`);
-            const apiMetadataResponse = await fetchWithRetries(apiUrl, {
-                method: 'GET',
-                headers: {
-                    'x-rapidapi-key': rapidApiKey,
-                    'x-rapidapi-host': rapidApiHost
-                },
-                // timeout removed
-            });
-
-            if (!apiMetadataResponse.ok) {
-                const errorText = await apiMetadataResponse.text();
-                console.error(`[${requestId}] API metadata error: ${apiMetadataResponse.status} ${apiMetadataResponse.statusText}. Body: ${errorText.substring(0, 500)}`);
-                let errorJson = {};
-                try { errorJson = JSON.parse(errorText); } catch(e) {}
-                throw new Error(`Failed to fetch metadata from download API: ${apiMetadataResponse.status} - ${errorJson.message || apiMetadataResponse.statusText}`);
+        // שלב 1.1: קבלת קישור הורדה מ-RapidAPI
+        console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
+        const apiMetadataResponse = await fetchWithRetries(apiUrl, {
+            method: 'GET',
+            headers: {
+                'x-rapidapi-key': RAPIDAPI_KEY,
+                'x-rapidapi-host': RAPIDAPI_HOST
             }
+        });
 
-            const metadata = await apiMetadataResponse.json();
-            const actualVideoUrl = metadata?.url; // Use 'url' property, renamed variable
-
-            if (!actualVideoUrl) {
-                console.error(`[${requestId}] Video download API response missing download link. Response:`, JSON.stringify(metadata, null, 2));
-                throw new Error('Video download API did not return a valid download link.');
-            }
-            console.log(`[${requestId}] Received video download link: ${actualVideoUrl.substring(0, 100)}...`);
-
-             // Extract title from metadata if available
-             if (metadata?.title) {
-                 apiMetadata.title = metadata.title;
-                 console.log(`[${requestId}] Extracted title from metadata: ${apiMetadata.title}`);
-             }
-
-            // Step 1.2: Fetch the actual video content from the obtained URL
-            console.log(`[${requestId}] Fetching actual video content...`);
-            const videoResponse = await fetchWithRetries(actualVideoUrl, { // Renamed variable
-                 method: 'GET',
-                 headers: headersManager.generateAdvancedHeaders({ // Use generic headers
-                     userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
-                     isYouTubeRequest: false // Treat as generic download
-                 }),
-                 // Timeout removed
-            });
-
-             if (!videoResponse.ok) { // Check videoResponse
-                 const errorText = await videoResponse.text(); // Try reading error text from videoResponse
-                 console.error(`[${requestId}] Error fetching actual video content: ${videoResponse.status} ${videoResponse.statusText}. Body: ${errorText.substring(0, 200)}`);
-                 throw new Error(`Failed to fetch video content: ${videoResponse.status} ${videoResponse.statusText}`);
-             }
-            console.log(`[${requestId}] Video content response OK (${videoResponse.status}). Saving video stream to ${tempFileName}`);
-
-            // Step 1.3: Pipe the *video* stream to a temporary file
-            await new Promise((resolve, reject) => {
-                const fileStream = fs.createWriteStream(tempFileName);
-                videoResponse.body.pipe(fileStream); // Pipe videoResponse.body
-                videoResponse.body.on('error', (err) => { // Listen on videoResponse.body
-                    console.error(`[${requestId}] Error reading video stream:`, err);
-                    fileStream.close(); // Ensure filestream is closed on error
-                    reject(new Error(`Error reading video stream: ${err.message}`));
-                });
-                fileStream.on('finish', () => {
-                    const stats = fs.statSync(tempFileName);
-                    console.log(`[${requestId}] Video download successful. Size: ${stats.size} bytes`); // Updated log
-                    if (stats.size === 0) {
-                        reject(new Error('Downloaded video file is empty.')); // Updated error message
-                    } else {
-                        resolve();
-                    }
-                });
-                fileStream.on('error', (err) => {
-                     console.error(`[${requestId}] Error writing video to temp file:`, err); // Updated log
-                     reject(new Error(`Error writing temp file: ${err.message}`));
-                });
-            });
-
-            // Note: This API might not provide title/duration. We'll use defaults.
-            // If the API *does* provide metadata (e.g., in headers), you could extract it here.
-            // const disposition = apiResponse.headers.get('content-disposition'); // This was checking the wrong response
-            //  if (disposition && disposition.includes('filename=')) {
-            //      const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
-            //      if (filenameMatch && filenameMatch[1]) {
-            //          // Attempt to extract title from filename, removing extension
-            //          let extractedTitle = filenameMatch[1].replace(/\.[^/.]+$/, "");
-            //          apiMetadata.title = extractedTitle || apiMetadata.title;
-            //          console.log(`[${requestId}] Extracted title from header: ${apiMetadata.title}`);
-            //      }
-            //  }
-
-        } catch (error) {
-            console.error(`[${requestId}] Error during video download for transcription:`, error); // Updated log
-            // Clean up temp file if it exists and the error occurred
-            if (fs.existsSync(tempFileName)) {
-                try {
-                    fs.unlinkSync(tempFileName);
-                } catch (cleanupError) {
-                    console.warn(`[${requestId}] Failed to cleanup temp file after error: ${cleanupError.message}`);
-                }
-            }
-            throw new Error(`Failed to get or download video via RapidAPI: ${error.message}`); // Updated error message
+        if (!apiMetadataResponse.ok) {
+            throw new Error(`נכשל לקבל מטא-דאטה מ-RapidAPI: ${apiMetadataResponse.status}`);
         }
-        // The tempFileName now holds the downloaded video, ready for STEP 3
 
-        // STEP 3: Send to ElevenLabs for transcription
-        console.log(`[${requestId}] STEP 3: SENDING TO ELEVENLABS FOR TRANSCRIPTION`);
+        const metadata = await apiMetadataResponse.json();
+        const actualVideoUrl = metadata?.url;
+
+        if (!actualVideoUrl) {
+            throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
+        }
+        
+        console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
+
+        // חילוץ כותרת מהמטא-דאטה אם זמינה
+        if (metadata?.title) {
+            apiMetadata.title = metadata.title;
+            console.log(`[${requestId}] כותרת סרטון: ${apiMetadata.title}`);
+        }
+
+        // שלב 1.2: הורדת הוידאו לאחסון בשרת
+        console.log(`[${requestId}] מוריד את תוכן הוידאו...`);
+        const videoResponse = await fetchWithRetries(actualVideoUrl, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        if (!videoResponse.ok) {
+            throw new Error(`נכשל להוריד את תוכן הוידאו: ${videoResponse.status}`);
+        }
+
+        console.log(`[${requestId}] שומר וידאו לאחסון זמני: ${tempFileName}`);
+
+        // שמירת הוידאו לקובץ זמני
+        await new Promise((resolve, reject) => {
+            const fileStream = fs.createWriteStream(tempFileName);
+            videoResponse.body.pipe(fileStream);
+            
+            videoResponse.body.on('error', (err) => {
+                fileStream.close();
+                reject(new Error(`שגיאה בהורדת וידאו: ${err.message}`));
+            });
+            
+            fileStream.on('finish', () => {
+                const stats = fs.statSync(tempFileName);
+                console.log(`[${requestId}] הורדת וידאו הושלמה. גודל: ${formatFileSize(stats.size)}`);
+                if (stats.size === 0) {
+                    reject(new Error('קובץ הוידאו שהורד ריק.'));
+                } else {
+                    resolve();
+                }
+            });
+            
+            fileStream.on('error', (err) => {
+                reject(new Error(`שגיאה בשמירת וידאו: ${err.message}`));
+            });
+        });
+
+        // שלב 2: שליחה ל-ElevenLabs לתמלול
+        console.log(`[${requestId}] שלב 2: שולח ל-ElevenLabs לתמלול`);
 
         const formData = new FormData();
         formData.append('file', fs.createReadStream(tempFileName));
         formData.append('model_id', 'scribe_v1');
         formData.append('timestamps_granularity', 'word');
-        formData.append('language', '');
+        formData.append('language', ''); // זיהוי שפה אוטומטי
 
-        // Try ElevenLabs API with retries
-        let transcriptionData;
-        let apiRetries = 2;
-        let apiDelay = 2000;
-        let apiSuccess = false;
+        // שליחה ל-API של ElevenLabs
+        const { response: apiResponse, data } = await sendMultipartFormRequest(
+            'https://api.elevenlabs.io/v1/speech-to-text',
+            formData,
+            { 'xi-api-key': ELEVENLABS_API_KEY }
+        );
 
-        for (let attempt = 1; attempt <= apiRetries + 1; attempt++) {
-            try {
-                console.log(`[${requestId}] ElevenLabs API attempt ${attempt}/${apiRetries + 1}`);
-
-                const { response, data } = await sendMultipartFormRequest(
-                    'https://api.elevenlabs.io/v1/speech-to-text',
-                    formData,
-                    { 'xi-api-key': ELEVENLABS_API_KEY }
-                );
-
-                if (response.statusCode !== 200) {
-                    console.error(`[${requestId}] ElevenLabs API error - status: ${response.statusCode}`);
-                    const errorText = typeof data === 'string' ? data : JSON.stringify(data);
-                    console.error(`[${requestId}] ElevenLabs error response: ${errorText}`);
-                    throw new Error(`ElevenLabs API error: ${response.statusCode}`);
-                }
-
-                transcriptionData = data;
-                apiSuccess = true;
-                break;
-            } catch (apiError) {
-                console.error(`[${requestId}] ElevenLabs API attempt ${attempt} failed:`, apiError);
-
-                if (attempt < apiRetries + 1) {
-                    console.log(`[${requestId}] Waiting ${apiDelay}ms before retry...`);
-                    await setTimeout(apiDelay);  // השימוש הנכון עם setTimeout מ-timers/promises
-                    apiDelay *= 2;
-                } else {
-                    throw new Error(`ElevenLabs transcription failed: ${apiError.message}`);
-                }
-            }
+        if (apiResponse.statusCode !== 200) {
+            throw new Error(`שגיאת ElevenLabs API: ${apiResponse.statusCode}`);
         }
 
-        // STEP 4: Clean up the temporary file
+        console.log(`[${requestId}] התמלול התקבל בהצלחה`);
+        
+        // שלב 3: ניקוי הקובץ הזמני
         try {
             fs.unlinkSync(tempFileName);
-            console.log(`[${requestId}] Temporary video file deleted: ${tempFileName}`); // Updated log
+            console.log(`[${requestId}] קובץ וידאו זמני נמחק: ${tempFileName}`);
         } catch (deleteError) {
-            console.warn(`[${requestId}] Failed to delete temporary file: ${deleteError.message}`);
+            console.warn(`[${requestId}] נכשל למחוק קובץ זמני: ${deleteError.message}`);
         }
 
-        // STEP 5: Process the transcription data based on requested format
-        console.log(`[${requestId}] STEP 5: Formatting results as ${format}`);
+        // שלב 4: פורמט והחזרת התמלול בהתאם לפורמט המבוקש
+        console.log(`[${requestId}] שלב 4: מפרמט תוצאות כ-${format}`);
 
         if (format === 'json') {
-            // Return raw JSON data from ElevenLabs, including metadata from RapidAPI
+            // החזרת נתוני JSON גולמיים
             return res.json({
                 success: true,
                 data: {
-                    videoId: videoId,
+                    videoId: actualVideoId,
                     title: apiMetadata.title,
-                    duration: apiMetadata.duration,
-                    transcript: transcriptionData,
-                    language: transcriptionData.language || 'unknown'
+                    transcript: data,
+                    language: data.language || 'unknown'
                 }
             });
         } else if (format === 'srt') {
-            // Convert to SRT format
+            // המרה לפורמט SRT
             let srtContent = "";
             let counter = 1;
 
-            if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
-                // Group words into chunks
+            if (data.words && Array.isArray(data.words)) {
+                // קיבוץ מילים לקבוצות
                 const chunks = [];
                 let currentChunk = [];
                 let currentDuration = 0;
                 const MAX_CHUNK_DURATION = 5;
 
-                for (const word of transcriptionData.words) {
+                for (const word of data.words) {
                     currentChunk.push(word);
                     currentDuration = word.end - (currentChunk[0]?.start || 0);
 
@@ -1182,7 +369,7 @@ app.get('/transcribe', async (req, res) => {
                     chunks.push(currentChunk);
                 }
 
-                // Convert chunks to SRT
+                // המרת קבוצות ל-SRT
                 for (const chunk of chunks) {
                     if (chunk.length > 0) {
                         const startTime = chunk[0].start;
@@ -1204,28 +391,28 @@ app.get('/transcribe', async (req, res) => {
             }
 
             res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || videoId}.srt"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || actualVideoId}.srt"`);
             return res.send(srtContent);
         } else if (format === 'txt') {
-            // Convert to plain text format
+            // המרה לפורמט טקסט פשוט
             let plainText = "";
 
-            if (transcriptionData.text) {
-                plainText = transcriptionData.text;
-            } else if (transcriptionData.words && Array.isArray(transcriptionData.words)) {
-                plainText = transcriptionData.words.map(w => w.text).join(' ')
+            if (data.text) {
+                plainText = data.text;
+            } else if (data.words && Array.isArray(data.words)) {
+                plainText = data.words.map(w => w.text).join(' ')
                     .replace(/ ([.,!?:;])/g, '$1');
             }
 
             res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || videoId}.txt"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || actualVideoId}.txt"`);
             return res.send(plainText);
         } else {
-            throw new Error(`פורמט לא נתמך: ${format}. יש להשתמש ב-json, srt, או txt.`);
+            throw new Error(`פורמט לא נתמך: ${format}. השתמש ב-json, srt, או txt.`);
         }
 
     } catch (error) {
-        console.error(`[${requestId}] TRANSCRIPTION ERROR:`, error);
+        console.error(`[${requestId}] שגיאת תמלול:`, error);
 
         return res.status(500).json({
             success: false,
@@ -1235,70 +422,363 @@ app.get('/transcribe', async (req, res) => {
     }
 });
 
-// Helper function to format seconds to SRT time format (HH:MM:SS,mmm)
-function formatSrtTime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const millis = Math.floor((seconds % 1) * 1000);
-
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
-}
-
-// Helper function to send multipart form request
-async function sendMultipartFormRequest(url, formData, headers = {}) {
-    return new Promise((resolve, reject) => {
-        // Get the form headers and add our custom headers
-        const formHeaders = formData.getHeaders();
-        const combinedHeaders = { ...formHeaders, ...headers };
-
-        // Get the form data as a readable stream
-        const dataStream = formData;
-
-        // Parse the URL
-        const parsedUrl = new URL(url);
-
-        // Prepare the request options
-        const options = {
-            method: 'POST',
-            hostname: parsedUrl.hostname,
-            path: parsedUrl.pathname + parsedUrl.search,
-            headers: combinedHeaders
-        };
-
-        // Choose http or https module based on the URL
-        const httpModule = parsedUrl.protocol === 'https:' ? https : http;
-
-        // Make the request
-        const req = httpModule.request(options, (res) => {
-            const chunks = [];
-
-            res.on('data', (chunk) => {
-                chunks.push(chunk);
-            });
-
-            res.on('end', () => {
-                const responseBody = Buffer.concat(chunks).toString();
-                let data;
-
-                // Try to parse as JSON if possible
-                try {
-                    data = JSON.parse(responseBody);
-                } catch (e) {
-                    data = responseBody; // Otherwise keep as string
+/**
+ * טופס פשוט לתמלול סרטוני יוטיוב
+ */
+app.get('/transcribe-form', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="he" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>תמלול סרטוני יוטיוב</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    background-color: #f5f5f5;
+                    margin: 0;
+                    padding: 20px;
+                    display: flex;
+                    justify-content: center;
                 }
+                .container {
+                    max-width: 600px;
+                    width: 100%;
+                    background-color: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    padding: 20px;
+                }
+                h1 {
+                    color: #d32f2f;
+                    margin-top: 0;
+                    margin-bottom: 20px;
+                }
+                .form-group {
+                    margin-bottom: 15px;
+                }
+                label {
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: bold;
+                }
+                input[type="text"] {
+                    width: 100%;
+                    padding: 8px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    font-size: 16px;
+                }
+                select {
+                    padding: 8px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    font-size: 16px;
+                }
+                button {
+                    background-color: #d32f2f;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 10px 20px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    transition: background-color 0.3s;
+                }
+                button:hover {
+                    background-color: #b71c1c;
+                }
+                .status {
+                    margin-top: 20px;
+                    padding: 10px;
+                    border-radius: 4px;
+                    display: none;
+                }
+                .loading {
+                    background-color: #e3f2fd;
+                    border: 1px solid #bbdefb;
+                    display: none;
+                }
+                .error {
+                    background-color: #ffebee;
+                    border: 1px solid #ffcdd2;
+                    display: none;
+                }
+                .success {
+                    background-color: #e8f5e9;
+                    border: 1px solid #c8e6c9;
+                    display: none;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>תמלול סרטוני יוטיוב</h1>
+                <div class="form-group">
+                    <label for="youtubeUrl">הדבק כתובת סרטון יוטיוב:</label>
+                    <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." dir="ltr">
+                </div>
+                <div class="form-group">
+                    <label for="format">פורמט תמלול:</label>
+                    <select id="format">
+                        <option value="srt">SRT (כתוביות)</option>
+                        <option value="txt">טקסט בלבד</option>
+                        <option value="json">JSON (מפורט)</option>
+                    </select>
+                </div>
+                <button id="transcribeBtn">תמלל סרטון</button>
+                
+                <div id="loadingStatus" class="status loading">
+                    מתמלל את הסרטון... התהליך עשוי להימשך מספר דקות בהתאם לאורך הסרטון.
+                </div>
+                
+                <div id="errorStatus" class="status error"></div>
+                
+                <div id="successStatus" class="status success">
+                    התמלול הושלם בהצלחה! הורדת הקובץ אמורה להתחיל אוטומטית.
+                </div>
+            </div>
+            
+            <script>
+                document.getElementById('transcribeBtn').addEventListener('click', async function() {
+                    // קבלת כתובת היוטיוב והפורמט
+                    const youtubeUrl = document.getElementById('youtubeUrl').value.trim();
+                    const format = document.getElementById('format').value;
+                    
+                    // בדיקת תקינות הכתובת
+                    if (!youtubeUrl) {
+                        const errorStatus = document.getElementById('errorStatus');
+                        errorStatus.textContent = 'נא להזין כתובת סרטון יוטיוב';
+                        errorStatus.style.display = 'block';
+                        return;
+                    }
+                    
+                    // הסתרת סטטוס קודם והצגת טעינה
+                    document.getElementById('errorStatus').style.display = 'none';
+                    document.getElementById('successStatus').style.display = 'none';
+                    const loadingStatus = document.getElementById('loadingStatus');
+                    loadingStatus.style.display = 'block';
+                    
+                    try {
+                        // יצירת בקשת תמלול
+                        const transcriptionUrl = \`/transcribe?url=\${encodeURIComponent(youtubeUrl)}&format=\${format}\`;
+                        
+                        // עבור פורמטים להורדה, פתיחה בחלון חדש
+                        if (format === 'srt' || format === 'txt') {
+                            window.open(transcriptionUrl, '_blank');
+                            
+                            // הצגת הודעת הצלחה
+                            loadingStatus.style.display = 'none';
+                            document.getElementById('successStatus').style.display = 'block';
+                        } else {
+                            // עבור JSON, ביצוע fetch והצגה
+                            const response = await fetch(transcriptionUrl);
+                            
+                            if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.error || 'שגיאה בתמלול הסרטון');
+                            }
+                            
+                            const data = await response.json();
+                            
+                            // הצגת הצלחה והפניה
+                            loadingStatus.style.display = 'none';
+                            document.getElementById('successStatus').style.display = 'block';
+                            
+                            // פתיחת JSON בלשונית חדשה
+                            const jsonBlob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                            const url = URL.createObjectURL(jsonBlob);
+                            window.open(url, '_blank');
+                        }
+                    } catch (error) {
+                        // הצגת שגיאה
+                        loadingStatus.style.display = 'none';
+                        const errorStatus = document.getElementById('errorStatus');
+                        errorStatus.textContent = error.message || 'שגיאה בתמלול הסרטון';
+                        errorStatus.style.display = 'block';
+                    }
+                });
+            </script>
+        </body>
+        </html>
+    `);
+});
 
-                resolve({ response: res, data });
-            });
-        });
+/**
+ * עמוד הבית הראשי
+ */
+app.get('/', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="he" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>שירות תמלול יוטיוב</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    background-color: #f5f5f5;
+                    margin: 0;
+                    padding: 0;
+                    color: #333;
+                }
+                .header {
+                    background-color: #d32f2f;
+                    color: white;
+                    padding: 40px 0;
+                    text-align: center;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 36px;
+                }
+                .container {
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }
+                .card {
+                    background-color: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    padding: 20px;
+                    margin-bottom: 20px;
+                }
+                h2 {
+                    color: #d32f2f;
+                    margin-top: 0;
+                }
+                .cta-button {
+                    display: inline-block;
+                    background-color: #d32f2f;
+                    color: white;
+                    text-decoration: none;
+                    padding: 12px 25px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    margin-top: 10px;
+                    transition: background-color 0.3s;
+                }
+                .cta-button:hover {
+                    background-color: #b71c1c;
+                }
+                .features {
+                    display: flex;
+                    flex-wrap: wrap;
+                    margin-top: 20px;
+                    gap: 20px;
+                }
+                .feature {
+                    flex: 1 1 200px;
+                    background-color: #f9f9f9;
+                    padding: 15px;
+                    border-radius: 8px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+                .feature h3 {
+                    margin-top: 0;
+                    color: #d32f2f;
+                }
+                footer {
+                    text-align: center;
+                    padding: 20px;
+                    color: #666;
+                    font-size: 14px;
+                }
+                code {
+                    background-color: #f1f1f1;
+                    padding: 3px 6px;
+                    border-radius: 3px;
+                    font-family: Consolas, Monaco, 'Andale Mono', monospace;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>שירות תמלול יוטיוב</h1>
+            </div>
+            
+            <div class="container">
+                <div class="card">
+                    <h2>קבל תמליל לכל סרטון יוטיוב</h2>
+                    <p>השירות שלנו מאפשר לך לקבל תמליל מדויק של כל סרטון יוטיוב בקלות ובמהירות. פשוט הדבק את כתובת הסרטון ובחר את פורמט התמלול הרצוי.</p>
+                    <a href="/transcribe-form" class="cta-button">לתמלול סרטון</a>
+                    
+                    <div class="features">
+                        <div class="feature">
+                            <h3>קבצי SRT</h3>
+                            <p>תמלול בפורמט SRT המתאים לכתוביות, כולל חותמות זמן מדויקות</p>
+                        </div>
+                        <div class="feature">
+                            <h3>טקסט פשוט</h3>
+                            <p>תמלול בפורמט טקסט פשוט, מושלם לשימוש במסמכים</p>
+                        </div>
+                        <div class="feature">
+                            <h3>פורמט JSON</h3>
+                            <p>תמלול בפורמט JSON עם מידע מפורט על כל מילה וחותמת זמן</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>שימוש ב-API</h2>
+                    <p>ניתן להשתמש ב-API שלנו ישירות:</p>
+                    <p><code>/transcribe?url=YOUTUBE_VIDEO_URL&format=srt|txt|json</code></p>
+                    <p>או</p>
+                    <p><code>/transcribe?id=YOUTUBE_VIDEO_ID&format=srt|txt|json</code></p>
+                    
+                    <h3>דוגמאות:</h3>
+                    <ul>
+                        <li>
+                            <p>תמלול סרטון לפורמט SRT:</p>
+                            <code>/transcribe?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&format=srt</code>
+                        </li>
+                        <li>
+                            <p>תמלול סרטון לפורמט טקסט פשוט:</p>
+                            <code>/transcribe?id=dQw4w9WgXcQ&format=txt</code>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="card">
+                    <h2>אודות השירות</h2>
+                    <p>שירות תמלול יוטיוב משתמש בטכנולוגיה מתקדמת של ElevenLabs לתמלול מדויק של סרטוני וידאו. השירות שלנו מאפשר:</p>
+                    <ul>
+                        <li>תמלול סרטונים בכל שפה</li>
+                        <li>דיוק גבוה במיוחד בזיהוי דיבור</li>
+                        <li>תמיכה בסרטונים ארוכים</li>
+                        <li>יצירת כתוביות מוכנות להטמעה בסרטונים</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <footer>
+                <p>שירות תמלול יוטיוב © 2024 | כל הזכויות שמורות</p>
+            </footer>
+        </body>
+        </html>
+    `);
+});
 
-        req.on('error', (error) => {
-            reject(error);
-        });
-
-        // Pipe the form data to the request
-        formData.pipe(req);
+/**
+ * נקודת קצה לבדיקת תקינות השירות
+ */
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        service: 'YouTube Transcription Service',
+        version: '1.0.0'
     });
-}
+});
 
-// End of file
+// הפעלת השרת
+app.listen(PORT, () => {
+    console.log(`השרת פועל על פורט ${PORT}`);
+    console.log(`שירות תמלול יוטיוב זמין בכתובות:`);
+    console.log(`- ממשק משתמש: http://localhost:${PORT}/`);
+    console.log(`- טופס תמלול: http://localhost:${PORT}/transcribe-form`);
+    console.log(`- API: http://localhost:${PORT}/transcribe?url=YOUTUBE_URL&format=srt|txt|json`);
+}); 

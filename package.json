@@ -1,27 +1,39 @@
 {
-  "name": "video-proxy",
+  "name": "youtube-transcription",
   "version": "1.0.0",
-  "description": "Proxy server for YouTube videos with transcription",
+  "description": "שירות לתמלול סרטוני יוטיוב באמצעות ElevenLabs",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "start:transcribe": "node transcribe-server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon server.js"
   },
+  "keywords": [
+    "youtube",
+    "transcription",
+    "elevenlabs",
+    "subtitles",
+    "srt"
+  ],
   "author": "",
   "license": "ISC",
-  "engines": {
-    "node": ">=16.0.0"
-  },
   "dependencies": {
-    "buffer": "^6.0.3",
     "cors": "^2.8.5",
-    "express": "^4.18.3",
-    "form-data": "^4.0.0",
-    "https-proxy-agent": "^7.0.2",
+    "express": "^4.21.2",
+    "form-data": "^4.0.2",
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.20"
-  }
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SHAY5555-gif/video_proxy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SHAY5555-gif/video_proxy/issues"
+  },
+  "homepage": "https://github.com/SHAY5555-gif/video_proxy#readme"
 }
