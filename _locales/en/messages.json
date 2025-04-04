@@ -1,0 +1,100 @@
+{
+  "extensionName": {
+    "message": "YouTube Transcription",
+    "description": "Name of the extension"
+  },
+  "extensionDescription": {
+    "message": "Transcribe YouTube videos using ElevenLabs API",
+    "description": "Description of the extension"
+  },
+  "transcribeButtonLabel": {
+    "message": "Transcribe Video",
+    "description": "Label for the transcribe button"
+  },
+  "formatMenuTitle": {
+    "message": "Choose Transcription Format",
+    "description": "Title for format selection menu"
+  },
+  "srtFormatLabel": {
+    "message": "SRT (Subtitles)",
+    "description": "Label for SRT format"
+  },
+  "srtFormatDescription": {
+    "message": "Standard subtitle format with timing",
+    "description": "Description for SRT format"
+  },
+  "txtFormatLabel": {
+    "message": "Plain Text",
+    "description": "Label for text format"
+  },
+  "txtFormatDescription": {
+    "message": "Regular text format without time markers",
+    "description": "Description for text format"
+  },
+  "jsonFormatLabel": {
+    "message": "JSON",
+    "description": "Label for JSON format"
+  },
+  "jsonFormatDescription": {
+    "message": "Structured format with full information",
+    "description": "Description for JSON format"
+  },
+  "transcribeButtonAction": {
+    "message": "Transcribe",
+    "description": "Text for transcribe button"
+  },
+  "cancelButtonAction": {
+    "message": "Cancel",
+    "description": "Text for cancel button"
+  },
+  "serviceUnavailable": {
+    "message": "Transcription service is currently unavailable",
+    "description": "Error message when service is unavailable"
+  },
+  "transcriptionStarted": {
+    "message": "Transcription started, please wait...",
+    "description": "Message when transcription begins"
+  },
+  "transcriptionError": {
+    "message": "Transcription error: $ERROR$",
+    "description": "Error message when transcription fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Connection error"
+      }
+    }
+  },
+  "serviceStatusAvailable": {
+    "message": "Service is available",
+    "description": "Status when service is available"
+  },
+  "serviceStatusUnavailable": {
+    "message": "Service is unavailable",
+    "description": "Status when service is unavailable"
+  },
+  "currentVideo": {
+    "message": "Current Video",
+    "description": "Label for current video"
+  },
+  "otherVideo": {
+    "message": "Other Video",
+    "description": "Label for other video"
+  },
+  "enterVideoUrl": {
+    "message": "Enter YouTube video URL",
+    "description": "Prompt for entering video URL"
+  },
+  "selectFormat": {
+    "message": "Select format",
+    "description": "Prompt for selecting format"
+  },
+  "openFullForm": {
+    "message": "Open Full Form",
+    "description": "Text for opening full form"
+  },
+  "poweredBy": {
+    "message": "Powered by ElevenLabs technology",
+    "description": "Copyright text"
+  }
+} 

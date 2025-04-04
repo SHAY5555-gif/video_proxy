@@ -1,0 +1,100 @@
+{
+  "extensionName": {
+    "message": "תמלול סרטוני יוטיוב",
+    "description": "שם התוסף"
+  },
+  "extensionDescription": {
+    "message": "תמלול סרטוני יוטיוב באמצעות ElevenLabs API",
+    "description": "תיאור התוסף"
+  },
+  "transcribeButtonLabel": {
+    "message": "תמלל סרטון",
+    "description": "תווית כפתור התמלול"
+  },
+  "formatMenuTitle": {
+    "message": "בחר פורמט תמלול",
+    "description": "כותרת תפריט בחירת פורמט"
+  },
+  "srtFormatLabel": {
+    "message": "SRT (כתוביות)",
+    "description": "תווית פורמט SRT"
+  },
+  "srtFormatDescription": {
+    "message": "פורמט כתוביות סטנדרטי עם תזמון",
+    "description": "תיאור פורמט SRT"
+  },
+  "txtFormatLabel": {
+    "message": "טקסט פשוט",
+    "description": "תווית פורמט טקסט"
+  },
+  "txtFormatDescription": {
+    "message": "פורמט טקסט רגיל ללא סימוני זמן",
+    "description": "תיאור פורמט טקסט"
+  },
+  "jsonFormatLabel": {
+    "message": "JSON",
+    "description": "תווית פורמט JSON"
+  },
+  "jsonFormatDescription": {
+    "message": "פורמט מבני עם מידע מלא",
+    "description": "תיאור פורמט JSON"
+  },
+  "transcribeButtonAction": {
+    "message": "תמלל",
+    "description": "טקסט כפתור התמלול"
+  },
+  "cancelButtonAction": {
+    "message": "ביטול",
+    "description": "טקסט כפתור ביטול"
+  },
+  "serviceUnavailable": {
+    "message": "שירות התמלול אינו זמין כרגע",
+    "description": "הודעת שגיאה כאשר השירות אינו זמין"
+  },
+  "transcriptionStarted": {
+    "message": "התמלול החל, אנא המתן...",
+    "description": "הודעה כאשר התמלול החל"
+  },
+  "transcriptionError": {
+    "message": "אירעה שגיאה בתמלול: $ERROR$",
+    "description": "הודעת שגיאה כאשר התמלול נכשל",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "שגיאת חיבור לשרת"
+      }
+    }
+  },
+  "serviceStatusAvailable": {
+    "message": "השירות זמין",
+    "description": "סטטוס כאשר השירות זמין"
+  },
+  "serviceStatusUnavailable": {
+    "message": "השירות אינו זמין",
+    "description": "סטטוס כאשר השירות אינו זמין"
+  },
+  "currentVideo": {
+    "message": "הסרטון הנוכחי",
+    "description": "תווית הסרטון הנוכחי"
+  },
+  "otherVideo": {
+    "message": "סרטון אחר",
+    "description": "תווית סרטון אחר"
+  },
+  "enterVideoUrl": {
+    "message": "הכנס כתובת סרטון יוטיוב",
+    "description": "הנחייה להזנת כתובת סרטון"
+  },
+  "selectFormat": {
+    "message": "בחר פורמט",
+    "description": "הנחייה לבחירת פורמט"
+  },
+  "openFullForm": {
+    "message": "פתח טופס מלא",
+    "description": "טקסט לפתיחת טופס מלא"
+  },
+  "poweredBy": {
+    "message": "מופעל באמצעות טכנולוגיית ElevenLabs",
+    "description": "טקסט זכויות יוצרים"
+  }
+} 

@@ -1,0 +1,192 @@
+/**
+ * CSS עבור תוסף תמלול סרטוני יוטיוב
+ */
+
+/* ------------------------ */
+/* כפתור תמלול ביוטיוב      */
+/* ------------------------ */
+.transcribe-button {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #1a73e8;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-left: 8px;
+  margin-right: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  direction: rtl;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.transcribe-button:hover {
+  background-color: #0d62cf;
+  transform: translateY(-1px);
+}
+
+.transcribe-button:active {
+  background-color: #0757ba;
+  transform: translateY(1px);
+}
+
+.transcribe-button-icon {
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+/* ------------------------ */
+/* תפריט בחירת פורמט        */
+/* ------------------------ */
+.format-menu {
+  position: fixed;
+  z-index: 9999;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  width: 250px;
+  direction: rtl;
+  text-align: right;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+.format-menu-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #202124;
+}
+
+.format-option {
+  display: flex;
+  align-items: center;
+  padding: 8px 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 4px;
+}
+
+.format-option:hover {
+  background-color: #f5f5f5;
+}
+
+.format-option input {
+  margin-left: 8px;
+}
+
+.format-option-label {
+  font-size: 14px;
+  color: #202124;
+}
+
+.format-option-description {
+  font-size: 12px;
+  color: #5f6368;
+  margin-top: 2px;
+}
+
+.format-menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.transcribe-action-button {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #1a73e8;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.transcribe-action-button:hover {
+  background-color: #0d62cf;
+}
+
+.format-menu-cancel {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #5f6368;
+  background-color: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.format-menu-cancel:hover {
+  background-color: #f5f5f5;
+}
+
+/* ------------------------ */
+/* עיצוב ההודעות והתראות    */
+/* ------------------------ */
+.transcribe-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  background-color: #323232;
+  color: white;
+  padding: 12px 16px;
+  border-radius: 4px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16);
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 14px;
+  max-width: 350px;
+  direction: rtl;
+  animation: notificationFadeIn 0.3s forwards;
+}
+
+.transcribe-notification.success {
+  background-color: #43a047;
+}
+
+.transcribe-notification.error {
+  background-color: #e53935;
+}
+
+@keyframes notificationFadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes notificationFadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-20px); }
+}
+
+/* ------------------------ */
+/* עיצוב אנימציית טעינה     */
+/* ------------------------ */
+.transcribe-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+  margin-left: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+} 
