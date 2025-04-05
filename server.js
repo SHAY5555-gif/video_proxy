@@ -67,7 +67,123 @@ app.use((req, res, next) => {
  * נקודת קצה עבור מדיניות פרטיות
  */
 app.get('/privacy-policy', (req, res) => {
-    res.sendFile(path.join(__dirname, 'privacy-policy.html'));
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - YouTube Custom Subtitles Extension</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin-top: 30px;
+        }
+        p {
+            margin: 15px 0;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Privacy Policy</h1>
+    <p>Last updated: May 1, 2023</p>
+
+    <p>Thank you for using the YouTube Custom Subtitles Extension ("Extension"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Extension.</p>
+    
+    <p>Please read this Privacy Policy carefully. By using the Extension, you agree to the collection and use of information in accordance with this policy.</p>
+
+    <h2>Information We Collect</h2>
+    <p>We collect the following types of information:</p>
+
+    <h3>Personal Information</h3>
+    <ul>
+        <li><strong>Account Information:</strong> When you choose to sign in with Google, we receive your email address and name to create and manage your account.</li>
+        <li><strong>Authentication Data:</strong> We use Google authentication to verify your identity. We do not store your Google password.</li>
+    </ul>
+
+    <h3>Usage Information</h3>
+    <ul>
+        <li><strong>Extension Usage:</strong> We collect information about how you use the Extension, including which features you use and your subtitle preferences.</li>
+        <li><strong>YouTube Data:</strong> We collect information about the YouTube videos you're watching when you use our Extension to add subtitles.</li>
+    </ul>
+
+    <h2>How We Use Your Information</h2>
+    <p>We use the information we collect to:</p>
+    <ul>
+        <li>Provide, maintain, and improve the Extension</li>
+        <li>Create and manage your user account</li>
+        <li>Save your subtitle files and preferences</li>
+        <li>Process and deliver your subtitle requests</li>
+        <li>Respond to your inquiries and support requests</li>
+        <li>Monitor and analyze usage patterns and trends</li>
+    </ul>
+
+    <h2>Data Storage</h2>
+    <p>We use Supabase, a secure database service, to store your account information and subtitle preferences. Your data is stored securely and is protected by industry-standard security measures.</p>
+
+    <h2>Third-Party Services</h2>
+    <p>Our Extension integrates with the following third-party services:</p>
+    <ul>
+        <li><strong>Google Authentication:</strong> For user authentication. Please refer to <a href="https://policies.google.com/privacy" target="_blank">Google's Privacy Policy</a> for information on how they handle your data.</li>
+        <li><strong>Supabase:</strong> For data storage. Please refer to <a href="https://supabase.io/privacy" target="_blank">Supabase's Privacy Policy</a> for information on how they handle your data.</li>
+    </ul>
+
+    <h2>Data Sharing</h2>
+    <p>We do not sell, trade, or otherwise transfer your personal information to outside parties except as described in this Privacy Policy. We may share your information with service providers who assist us in operating our Extension, conducting our business, or serving you, so long as those parties agree to keep this information confidential.</p>
+
+    <h2>Security</h2>
+    <p>We implement a variety of security measures to maintain the safety of your personal information. However, no method of transmission over the Internet or electronic storage is 100% secure, and we cannot guarantee its absolute security.</p>
+
+    <h2>Your Rights</h2>
+    <p>You have the right to:</p>
+    <ul>
+        <li>Access the personal information we have about you</li>
+        <li>Correct inaccuracies in your personal information</li>
+        <li>Delete your personal information</li>
+        <li>Object to the processing of your personal information</li>
+        <li>Request a copy of your personal information in a structured, commonly used, and machine-readable format</li>
+    </ul>
+
+    <h2>Children's Privacy</h2>
+    <p>Our Extension is not intended for use by children under the age of 13, and we do not knowingly collect personal information from children under 13.</p>
+
+    <h2>Changes to This Privacy Policy</h2>
+    <p>We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date.</p>
+
+    <h2>Contact Us</h2>
+    <p>If you have any questions about this Privacy Policy, please contact us at:</p>
+    <p>Email: support@youtube-custom-subtitles.com</p>
+
+    <div class="footer">
+        <p>YouTube Custom Subtitles Extension</p>
+    </div>
+</body>
+</html>
+    `);
 });
 
 /**
