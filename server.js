@@ -733,6 +733,10 @@ app.get('/transcribe-form', (req, res) => {
                     }
                 });
             </script>
+            
+            <div style="margin-top: 30px; text-align: center; font-size: 14px; color: #666;">
+                <p><a href="/privacy-policy" style="color: #666; text-decoration: underline;">מדיניות פרטיות</a> | שירות תמלול יוטיוב © 2024</p>
+            </div>
         </body>
         </html>
     `);
@@ -888,7 +892,7 @@ app.get('/', (req, res) => {
             </div>
             
             <footer>
-                <p>שירות תמלול יוטיוב © 2024 | כל הזכויות שמורות</p>
+                <p>שירות תמלול יוטיוב © 2024 | <a href="/privacy-policy" style="color: #666; text-decoration: underline;">מדיניות פרטיות</a> | כל הזכויות שמורות</p>
             </footer>
         </body>
         </html>
