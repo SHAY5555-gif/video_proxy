@@ -17,12 +17,23 @@ const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// שירות קבצים סטטיים
+// הפעלת CORS
+app.use(require('cors')());
+
+// Middleware לתיעוד בקשות
+app.use((req, res, next) => {
+    const method = req.method;
+    const url = req.url;
+    console.log(`[בקשה] ${method} ${url}`);
+    next();
+});
+
+// שירות קבצים סטטיים - מועבר לפה כדי לא לפגוע ב-routes מותאמות
 app.use(express.static(path.join(__dirname)));
 
 // מפתחות API
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d284";
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28";
 const RAPIDAPI_HOST = "youtube-search-download3.p.rapidapi.com";
 
 // יצירת תיקייה זמנית לאחסון קבצי מדיה
@@ -51,17 +62,6 @@ setInterval(() => {
         console.error('שגיאה בניקוי קבצים זמניים:', err);
     }
 }, 60 * 60 * 1000);
-
-// הפעלת CORS
-app.use(require('cors')());
-
-// Middleware לתיעוד בקשות
-app.use((req, res, next) => {
-    const method = req.method;
-    const url = req.url;
-    console.log(`[בקשה] ${method} ${url}`);
-    next();
-});
 
 /**
  * נקודת קצה עבור מדיניות פרטיות
@@ -320,6 +320,7 @@ app.get('/transcribe', async (req, res) => {
     const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 
     console.log(`[${requestId}] ========== מתחיל תהליך תמלול ==========`);
+    console.log(`[${requestId}] פרמטרים: url=${videoUrl}, id=${videoId}, format=${format}`);
     
     // טיפול בכתובת או מזהה וידאו
     let actualVideoId = videoId;
@@ -333,7 +334,7 @@ app.get('/transcribe', async (req, res) => {
             } else if (urlObj.hostname.includes('youtu.be')) {
                 actualVideoId = urlObj.pathname.substring(1);
             }
-    } catch (error) {
+        } catch (error) {
             console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
         }
     }
