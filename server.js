@@ -482,23 +482,23 @@ app.get('/transcribe', async (req, res) => {
                 // קיבוץ מילים לקבוצות
                 const chunks = [];
                 let currentChunk = [];
-                let currentDuration = 0;
-                const MAX_CHUNK_DURATION = 5;
-
-                for (const word of data.words) {
+                const MIN_WORDS = 5;
+                
+                for (let i = 0; i < data.words.length; i++) {
+                    const word = data.words[i];
                     currentChunk.push(word);
-                    currentDuration = word.end - (currentChunk[0]?.start || 0);
-
-                    if (currentDuration >= MAX_CHUNK_DURATION ||
-                        word.text.match(/[.!?]$/) ||
-                        currentChunk.length >= 15) {
-
+                    
+                    // בדיקה אם המילה מסתיימת בסימן פיסוק והגענו למינימום מילים
+                    const isPunctuation = word.text.match(/[.!?]$/);
+                    
+                    // רק אם יש לפחות 5 מילים וזה סימן פיסוק, נסיים את הקטע
+                    if (currentChunk.length >= MIN_WORDS && isPunctuation) {
                         chunks.push([...currentChunk]);
                         currentChunk = [];
-                        currentDuration = 0;
                     }
                 }
-
+                
+                // טיפול במילים שנשארו בסוף
                 if (currentChunk.length > 0) {
                     chunks.push(currentChunk);
                 }
