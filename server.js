@@ -200,11 +200,27 @@ app.get('/health', (req, res) => {
 async function fetchWithRetries(url, options, maxRetries = 3) {
     let lastError;
     let retryDelay = 1000;
+    
+    // טיפול ב-baseUrl ו-params אם קיימים
+    let fetchUrl = url;
+    if (options.baseUrl) {
+        fetchUrl = options.baseUrl + (url.startsWith('/') ? url : '/' + url);
+        delete options.baseUrl;
+    }
+    
+    if (options.params) {
+        const urlObj = new URL(fetchUrl);
+        for (const [key, value] of Object.entries(options.params)) {
+            urlObj.searchParams.append(key, value);
+        }
+        fetchUrl = urlObj.toString();
+        delete options.params;
+    }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`ניסיון ${attempt}/${maxRetries} עבור כתובת: ${url.substring(0, 100)}...`);
-            const response = await fetch(url, options);
+            console.log(`ניסיון ${attempt}/${maxRetries} עבור כתובת: ${fetchUrl.substring(0, 100)}...`);
+            const response = await fetch(fetchUrl, options);
 
             if (response.status === 429) {
                 console.log(`הגבלת קצב. המתנה ${retryDelay}ms לפני ניסיון חוזר`);
@@ -325,75 +341,169 @@ app.get('/transcribe', async (req, res) => {
     
     // טיפול בכתובת או מזהה וידאו
     let actualVideoId = videoId;
+    let isYouTube = false;
+    let actualVideoUrl = videoUrl;
     
-    if (videoUrl && !videoId) {
-        // חילוץ מזהה וידאו מכתובת אם סופקה
-        try {
-            const urlObj = new URL(videoUrl);
-            if (urlObj.hostname.includes('youtube.com')) {
-                actualVideoId = urlObj.searchParams.get('v');
-            } else if (urlObj.hostname.includes('youtu.be')) {
-                actualVideoId = urlObj.pathname.substring(1);
+    if (videoUrl) {
+        // בדיקה האם מדובר בסרטון יוטיוב
+        isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+        
+        if (isYouTube && !videoId) {
+            // חילוץ מזהה וידאו מכתובת יוטיוב אם סופקה
+            try {
+                const urlObj = new URL(videoUrl);
+                if (urlObj.hostname.includes('youtube.com')) {
+                    actualVideoId = urlObj.searchParams.get('v');
+                } else if (urlObj.hostname.includes('youtu.be')) {
+                    actualVideoId = urlObj.pathname.substring(1);
+                }
+            } catch (error) {
+                console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
             }
-        } catch (error) {
-            console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
         }
     }
     
-    if (!actualVideoId) {
+    if (!actualVideoId && !actualVideoUrl) {
         return res.status(400).json({
             success: false,
             error: 'חסר פרמטר חובה: id או url (מזהה סרטון או כתובת)',
-            example: '/transcribe?id=YOUTUBE_VIDEO_ID או /transcribe?url=YOUTUBE_URL'
+            example: '/transcribe?id=YOUTUBE_VIDEO_ID או /transcribe?url=VIDEO_URL'
         });
     }
     
-    console.log(`[${requestId}] מזהה סרטון: ${actualVideoId}, פורמט: ${format}`);
+    console.log(`[${requestId}] מזהה סרטון: ${actualVideoId || 'לא ידוע'}, כתובת: ${actualVideoUrl || 'לא ידוע'}, פורמט: ${format}`);
 
     try {
-        // שלב 1: הורדת וידאו באמצעות RapidAPI
-        console.log(`[${requestId}] שלב 1: מוריד סרטון (MP4) באמצעות RapidAPI`);
+        // שלב 1: הורדת וידאו
+        console.log(`[${requestId}] שלב 1: מוריד וידאו במדיה ${isYouTube ? 'יוטיוב' : 'כללי'}`);
 
-        const videoFormat = 'mp4';
-        const videoResolution = '360'; // רזולוציה נמוכה יותר להורדה מהירה יותר
-        const apiUrl = `https://${RAPIDAPI_HOST}/v1/download?v=${actualVideoId}&type=${videoFormat}&resolution=${videoResolution}`;
+        const tempFileName = path.join(TEMP_DIR, `${actualVideoId || Date.now()}_${Date.now()}.mp4`);
+        let apiMetadata = { title: `Video ${actualVideoId || Date.now()}`, duration: 0 };
+        let videoDownloadUrl = '';
 
-        const tempFileName = path.join(TEMP_DIR, `${actualVideoId}_${Date.now()}.${videoFormat}`);
-        let apiMetadata = { title: `Video ${actualVideoId}`, duration: 0 };
+        if (isYouTube && actualVideoId) {
+            // שלב 1.1: קבלת קישור הורדה מיוטיוב באמצעות RapidAPI
+            console.log(`[${requestId}] מוריד סרטון יוטיוב (MP4) באמצעות RapidAPI`);
+            
+            const videoFormat = 'mp4';
+            const videoResolution = '360'; // רזולוציה נמוכה יותר להורדה מהירה יותר
+            const apiUrl = `https://${RAPIDAPI_HOST}/v1/download?v=${actualVideoId}&type=${videoFormat}&resolution=${videoResolution}`;
 
-        // שלב 1.1: קבלת קישור הורדה מ-RapidAPI
-        console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
+            console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
             const apiMetadataResponse = await fetchWithRetries(apiUrl, {
                 method: 'GET',
                 headers: {
-                'x-rapidapi-key': RAPIDAPI_KEY,
-                'x-rapidapi-host': RAPIDAPI_HOST
-            }
+                    'x-rapidapi-key': RAPIDAPI_KEY,
+                    'x-rapidapi-host': RAPIDAPI_HOST
+                }
             });
 
             if (!apiMetadataResponse.ok) {
-            throw new Error(`נכשל לקבל מטא-דאטה מ-RapidAPI: ${apiMetadataResponse.status}`);
+                throw new Error(`נכשל לקבל מטא-דאטה מ-RapidAPI: ${apiMetadataResponse.status}`);
             }
 
             const metadata = await apiMetadataResponse.json();
-        const actualVideoUrl = metadata?.url;
+            videoDownloadUrl = metadata?.url;
 
-            if (!actualVideoUrl) {
-            throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
+            if (!videoDownloadUrl) {
+                throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
             }
 
-        console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
+            console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
 
-        // חילוץ כותרת מהמטא-דאטה אם זמינה
-             if (metadata?.title) {
-                 apiMetadata.title = metadata.title;
-            console.log(`[${requestId}] כותרת סרטון: ${apiMetadata.title}`);
+            // חילוץ כותרת מהמטא-דאטה אם זמינה
+            if (metadata?.title) {
+                apiMetadata.title = metadata.title;
+                console.log(`[${requestId}] כותרת סרטון: ${apiMetadata.title}`);
+            }
+        } else if (actualVideoUrl) {
+            // שלב 1.1: קבלת קישור הורדה עבור פלטפורמות אחרות באמצעות API
+            console.log(`[${requestId}] מוריד וידאו מפלטפורמה כללית: ${actualVideoUrl}`);
+            
+            // בדיקה האם זה יוטיוב בלי מזהה
+            if (isYouTube && !actualVideoId) {
+                // ננסה שוב להשתמש בכתובת
+                console.log(`[${requestId}] ננסה להשתמש בכתובת היוטיוב המלאה`);
+                
+                // שימוש ב-API עבור הורדה באמצעות כתובת מלאה
+                const apiResponse = await fetchWithRetries('/download', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    baseUrl: req.protocol + '://' + req.get('host'),
+                    params: { url: actualVideoUrl }
+                });
+                
+                if (!apiResponse.ok) {
+                    throw new Error(`נכשל לקבל מידע מ-API ההורדה: ${apiResponse.status}`);
+                }
+                
+                const data = await apiResponse.json();
+                
+                if (!data.success || !data.data || !data.data.medias || data.data.medias.length === 0) {
+                    throw new Error('לא התקבלו נתוני הורדה תקינים');
+                }
+                
+                // בחירת הקישור עם האיכות הנמוכה ביותר
+                let lowestQualityMedia = data.data.medias[0];
+                for (const media of data.data.medias) {
+                    if (media.type === 'video' && 
+                        (lowestQualityMedia.quality.includes('720') || lowestQualityMedia.quality.includes('1080'))) {
+                        lowestQualityMedia = media;
+                    }
+                }
+                
+                videoDownloadUrl = lowestQualityMedia.url;
+                apiMetadata.title = data.data.title || apiMetadata.title;
+                
+                console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-API ההורדה המקומי: ${apiMetadata.title}`);
+            } else {
+                // עבור פלטפורמות אחרות, השתמש ב-ZMIO API
+                const apiUrl = 'https://api.zm.io.vn/v1/social/autolink';
+                
+                console.log(`[${requestId}] משתמש ב-ZMIO API עבור הורדת תוכן מ: ${actualVideoUrl}`);
+                const apiResponse = await fetchWithRetries(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': ZMIO_API_KEY
+                    },
+                    body: JSON.stringify({ url: actualVideoUrl })
+                });
+
+                if (!apiResponse.ok) {
+                    throw new Error(`נכשל לקבל מידע מ-ZMIO API: ${apiResponse.status}`);
+                }
+
+                // קבלת נתוני הוידאו
+                const data = await apiResponse.json();
+                
+                // בדיקה שהתקבלו נתונים תקינים
+                if (!data || !data.medias || data.medias.length === 0) {
+                    throw new Error('לא התקבלו נתונים תקינים מה-API');
+                }
+                
+                // בחירת הקישור עם האיכות הנמוכה ביותר
+                let lowestQualityMedia = data.medias[0];
+                for (const media of data.medias) {
+                    if (media.type === 'video' && 
+                        (lowestQualityMedia.quality.includes('720') || lowestQualityMedia.quality.includes('1080'))) {
+                        lowestQualityMedia = media;
+                    }
+                }
+                
+                videoDownloadUrl = lowestQualityMedia.url;
+                apiMetadata.title = data.title || apiMetadata.title;
+                
+                console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-ZMIO API: ${apiMetadata.title}`);
+            }
         }
 
         // שלב 1.2: הורדת הוידאו לאחסון בשרת
         console.log(`[${requestId}] מוריד את תוכן הוידאו...`);
-        const videoResponse = await fetchWithRetries(actualVideoUrl, {
-                 method: 'GET',
+        const videoResponse = await fetchWithRetries(videoDownloadUrl, {
+            method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
@@ -406,8 +516,8 @@ app.get('/transcribe', async (req, res) => {
         console.log(`[${requestId}] שומר וידאו לאחסון זמני: ${tempFileName}`);
 
         // שמירת הוידאו לקובץ זמני
-            await new Promise((resolve, reject) => {
-                const fileStream = fs.createWriteStream(tempFileName);
+        await new Promise((resolve, reject) => {
+            const fileStream = fs.createWriteStream(tempFileName);
             videoResponse.body.pipe(fileStream);
             
             videoResponse.body.on('error', (err) => {
@@ -415,20 +525,20 @@ app.get('/transcribe', async (req, res) => {
                 reject(new Error(`שגיאה בהורדת וידאו: ${err.message}`));
             });
             
-                fileStream.on('finish', () => {
-                    const stats = fs.statSync(tempFileName);
+            fileStream.on('finish', () => {
+                const stats = fs.statSync(tempFileName);
                 console.log(`[${requestId}] הורדת וידאו הושלמה. גודל: ${formatFileSize(stats.size)}`);
-                    if (stats.size === 0) {
+                if (stats.size === 0) {
                     reject(new Error('קובץ הוידאו שהורד ריק.'));
-                    } else {
-                        resolve();
-                    }
-                });
-            
-                fileStream.on('error', (err) => {
-                reject(new Error(`שגיאה בשמירת וידאו: ${err.message}`));
-                });
+                } else {
+                    resolve();
+                }
             });
+            
+            fileStream.on('error', (err) => {
+                reject(new Error(`שגיאה בשמירת וידאו: ${err.message}`));
+            });
+        });
 
         // שלב 2: שליחה ל-ElevenLabs לתמלול
         console.log(`[${requestId}] שלב 2: שולח ל-ElevenLabs לתמלול`);
@@ -441,10 +551,10 @@ app.get('/transcribe', async (req, res) => {
 
         // שליחה ל-API של ElevenLabs
         const { response: apiResponse, data } = await sendMultipartFormRequest(
-                    'https://api.elevenlabs.io/v1/speech-to-text',
-                    formData,
-                    { 'xi-api-key': ELEVENLABS_API_KEY }
-                );
+            'https://api.elevenlabs.io/v1/speech-to-text',
+            formData,
+            { 'xi-api-key': ELEVENLABS_API_KEY }
+        );
 
         if (apiResponse.statusCode !== 200) {
             throw new Error(`שגיאת ElevenLabs API: ${apiResponse.statusCode}`);
@@ -468,7 +578,8 @@ app.get('/transcribe', async (req, res) => {
             return res.json({
                 success: true,
                 data: {
-                    videoId: actualVideoId,
+                    url: actualVideoUrl,
+                    id: actualVideoId,
                     title: apiMetadata.title,
                     transcript: data,
                     language: data.language || 'unknown'
@@ -534,7 +645,7 @@ app.get('/transcribe', async (req, res) => {
             }
 
             res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || actualVideoId}.srt"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.srt"`);
             return res.send(srtContent);
         } else if (format === 'txt') {
             // המרה לפורמט טקסט פשוט
@@ -548,7 +659,7 @@ app.get('/transcribe', async (req, res) => {
             }
 
             res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title || actualVideoId}.txt"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.txt"`);
             return res.send(plainText);
         } else {
             throw new Error(`פורמט לא נתמך: ${format}. השתמש ב-json, srt, או txt.`);
