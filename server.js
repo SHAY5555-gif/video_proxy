@@ -840,6 +840,20 @@ app.get('/', (req, res) => {
                     border-radius: 3px;
                     font-family: Consolas, Monaco, 'Andale Mono', monospace;
                 }
+                .buttons-container {
+                    display: flex;
+                    gap: 15px;
+                    flex-wrap: wrap;
+                }
+                .platform-badge {
+                    display: inline-block;
+                    padding: 5px 10px;
+                    background-color: #f1f1f1;
+                    border-radius: 4px;
+                    margin-right: 5px;
+                    margin-bottom: 5px;
+                    font-size: 14px;
+                }
             </style>
         </head>
         <body>
@@ -866,6 +880,27 @@ app.get('/', (req, res) => {
                             <h3>פורמט JSON</h3>
                             <p>תמלול בפורמט JSON עם מידע מפורט על כל מילה וחותמת זמן</p>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- כרטיס חדש להורדה מאתרים נוספים -->
+                <div class="card">
+                    <h2>הורדה ותמלול מפלטפורמות נוספות</h2>
+                    <p>עכשיו באפשרותך להוריד ולתמלל סרטונים ממגוון רחב של פלטפורמות מעבר ליוטיוב!</p>
+                    
+                    <div class="platform-badges">
+                        <span class="platform-badge">Instagram</span>
+                        <span class="platform-badge">Facebook</span>
+                        <span class="platform-badge">TikTok</span>
+                        <span class="platform-badge">Twitter/X</span>
+                        <span class="platform-badge">Vimeo</span>
+                        <span class="platform-badge">ועוד...</span>
+                    </div>
+                    
+                    <p>נסה את השירות החדש שלנו להורדת וידאו מכל פלטפורמה ותמלול אוטומטי בקלות!</p>
+                    
+                    <div class="buttons-container">
+                        <a href="/download-test" class="cta-button">הורדת וידאו מכל אתר</a>
                     </div>
                 </div>
                 

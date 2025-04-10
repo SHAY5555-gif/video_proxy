@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>בדיקת הורדת וידאו מפלטפורמות</title>
+    <title>הורדה ותמלול מפלטפורמות</title>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -142,10 +142,42 @@
         .examples ul {
             padding-right: 20px;
         }
+        
+        .transcribe-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .format-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .format-option {
+            display: flex;
+            align-items: center;
+        }
+        
+        .transcribe-button {
+            background-color: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .transcribe-button:hover {
+            background-color: #b71c1c;
+        }
     </style>
 </head>
 <body>
-    <h1>בדיקת הורדת וידאו מפלטפורמות שונות</h1>
+    <h1>הורדה ותמלול מפלטפורמות שונות</h1>
     
     <div class="container">
         <form id="download-form">
@@ -188,10 +220,40 @@
         
         <h3>קישורי הורדה:</h3>
         <ul class="download-links"></ul>
+        
+        <!-- אזור תמלול חדש -->
+        <div class="transcribe-section">
+            <h3>תמלול אוטומטי לסרטון:</h3>
+            <p>באפשרותך לקבל תמלול אוטומטי של הסרטון. בחר את פורמט התמלול הרצוי:</p>
+            
+            <div class="format-options">
+                <div class="format-option">
+                    <input type="radio" id="format-srt" name="transcription-format" value="srt" checked>
+                    <label for="format-srt">SRT (כתוביות)</label>
+                </div>
+                
+                <div class="format-option">
+                    <input type="radio" id="format-txt" name="transcription-format" value="txt">
+                    <label for="format-txt">טקסט פשוט</label>
+                </div>
+                
+                <div class="format-option">
+                    <input type="radio" id="format-json" name="transcription-format" value="json">
+                    <label for="format-json">JSON (מפורט)</label>
+                </div>
+            </div>
+            
+            <button type="button" class="transcribe-button" id="transcribe-button">תמלל את הסרטון</button>
+            <div class="loading" id="transcribe-loading">
+                <div class="spinner"></div>
+                <div>מתמלל את הסרטון... התהליך עשוי להימשך מספר דקות.</div>
+            </div>
+        </div>
     </div>
     
     <script>
         const RENDER_SERVICE_URL = 'https://video-proxy-obqa.onrender.com';
+        let currentVideoUrl = '';
         
         // קריאת פרמטר URL מכתובת הדף
         function getUrlParameter(name) {
@@ -223,6 +285,9 @@
                 return;
             }
             
+            // שמירת כתובת הוידאו הנוכחית
+            currentVideoUrl = videoUrl;
+            
             // מסתיר תוצאות קודמות ושגיאות
             document.querySelector('.result-container').style.display = 'none';
             document.querySelector('.error').style.display = 'none';
@@ -253,6 +318,28 @@
                     // הסתרת סימן טעינה
                     document.querySelector('.loading').style.display = 'none';
                 });
+        });
+        
+        // הוספת האזנה לכפתור התמלול
+        document.getElementById('transcribe-button').addEventListener('click', function() {
+            if (!currentVideoUrl) {
+                showError('אין סרטון זמין לתמלול');
+                return;
+            }
+            
+            // קבלת הפורמט שנבחר
+            const format = document.querySelector('input[name="transcription-format"]:checked').value;
+            
+            // מציג סימן טעינה של התמלול
+            document.getElementById('transcribe-loading').style.display = 'flex';
+            
+            // פתיחת חלון חדש עם הבקשה לתמלול
+            window.open(`${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(currentVideoUrl)}&format=${format}`, '_blank');
+            
+            // מסתיר את סימן הטעינה אחרי כמה שניות
+            setTimeout(() => {
+                document.getElementById('transcribe-loading').style.display = 'none';
+            }, 3000);
         });
         
         function displayResults(videoData) {
