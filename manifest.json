@@ -26,7 +26,18 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/*", "*://youtu.be/*"],
+      "matches": [
+        "*://*.youtube.com/*", 
+        "*://youtu.be/*",
+        "*://*.tiktok.com/*",
+        "*://*.facebook.com/*",
+        "*://*.instagram.com/*",
+        "*://*.twitter.com/*",
+        "*://*.threads.net/*",
+        "*://*.pinterest.com/*",
+        "*://*.reddit.com/*",
+        "*://*.vimeo.com/*"
+      ],
       "js": ["content-script.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
@@ -41,6 +52,15 @@
   "host_permissions": [
     "*://*.youtube.com/*",
     "*://youtu.be/*",
-    "https://video-proxy-obqa.onrender.com/*"
+    "*://*.tiktok.com/*", 
+    "*://*.facebook.com/*",
+    "*://*.instagram.com/*", 
+    "*://*.twitter.com/*",
+    "*://*.threads.net/*",
+    "*://*.pinterest.com/*",
+    "*://*.reddit.com/*",
+    "*://*.vimeo.com/*",
+    "https://video-proxy-obqa.onrender.com/*",
+    "https://api.zm.io.vn/*"
   ]
 } 

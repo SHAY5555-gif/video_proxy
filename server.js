@@ -35,6 +35,7 @@ app.use(express.static(path.join(__dirname)));
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28";
 const RAPIDAPI_HOST = "youtube-search-download3.p.rapidapi.com";
+const ZMIO_API_KEY = process.env.ZMIO_API_KEY || "hBsrDies";
 
 // יצירת תיקייה זמנית לאחסון קבצי מדיה
 const TEMP_DIR = path.join(os.tmpdir(), 'youtube-transcription');
@@ -906,6 +907,143 @@ app.get('/', (req, res) => {
         </body>
         </html>
     `);
+});
+
+/**
+ * נקודת קצה להורדת וידאו מפלטפורמות שונות
+ */
+app.get('/download', async (req, res) => {
+    const videoUrl = req.query.url;
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+
+    if (!videoUrl) {
+        return res.status(400).json({
+            success: false,
+            error: 'חסר פרמטר חובה: url (כתובת הוידאו)',
+            example: '/download?url=VIDEO_URL'
+        });
+    }
+
+    console.log(`[${requestId}] ========== מתחיל תהליך הורדת וידאו ==========`);
+    console.log(`[${requestId}] כתובת: ${videoUrl}`);
+    
+    try {
+        // בדיקה האם מדובר בסרטון יוטיוב
+        const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+        let videoData;
+        
+        if (isYouTube) {
+            // שימוש ב-RAPID API עבור יוטיוב
+            console.log(`[${requestId}] זוהה סרטון יוטיוב, משתמש ב-RAPID API`);
+            
+            // חילוץ מזהה הוידאו
+            let videoId;
+            try {
+                const urlObj = new URL(videoUrl);
+                if (urlObj.hostname.includes('youtube.com')) {
+                    videoId = urlObj.searchParams.get('v');
+                } else if (urlObj.hostname.includes('youtu.be')) {
+                    videoId = urlObj.pathname.substring(1);
+                }
+            } catch (error) {
+                console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
+                throw new Error('שגיאה בפירוק כתובת YouTube');
+            }
+            
+            if (!videoId) {
+                throw new Error('לא ניתן לחלץ מזהה וידאו מהכתובת');
+            }
+            
+            const videoFormat = 'mp4';
+            const videoResolution = '720'; // רזולוציה גבוהה יותר להורדה באיכות טובה
+            const apiUrl = `https://${RAPIDAPI_HOST}/v1/download?v=${videoId}&type=${videoFormat}&resolution=${videoResolution}`;
+            
+            console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
+            const apiResponse = await fetchWithRetries(apiUrl, {
+                method: 'GET',
+                headers: {
+                    'x-rapidapi-key': RAPIDAPI_KEY,
+                    'x-rapidapi-host': RAPIDAPI_HOST
+                }
+            });
+
+            if (!apiResponse.ok) {
+                throw new Error(`נכשל לקבל מידע מ-RapidAPI: ${apiResponse.status}`);
+            }
+
+            const metadata = await apiResponse.json();
+            
+            if (!metadata?.url) {
+                throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
+            }
+            
+            // המרה למבנה אחיד
+            videoData = {
+                url: videoUrl,
+                source: 'youtube',
+                author: metadata.channel || '',
+                title: metadata.title || `Video ${videoId}`,
+                thumbnail: metadata.thumb || '',
+                duration: metadata.duration || '',
+                medias: [{
+                    url: metadata.url,
+                    quality: metadata.resolution || '720p',
+                    extension: 'mp4',
+                    type: 'video'
+                }]
+            };
+            
+        } else {
+            // שימוש בספק API החדש לשאר הפלטפורמות
+            console.log(`[${requestId}] משתמש ב-ZMIO API עבור הורדת תוכן מ: ${videoUrl}`);
+            
+            const apiUrl = 'https://api.zm.io.vn/v1/social/autolink';
+            
+            console.log(`[${requestId}] שולח בקשה ל-API`);
+            const apiResponse = await fetchWithRetries(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': ZMIO_API_KEY
+                },
+                body: JSON.stringify({ url: videoUrl })
+            });
+
+            if (!apiResponse.ok) {
+                throw new Error(`נכשל לקבל מידע מ-ZMIO API: ${apiResponse.status}`);
+            }
+
+            // קבלת נתוני הוידאו
+            videoData = await apiResponse.json();
+            
+            // בדיקה שהתקבלו נתונים תקינים
+            if (!videoData || !videoData.medias || videoData.medias.length === 0) {
+                throw new Error('לא התקבלו נתונים תקינים מה-API');
+            }
+        }
+        
+        console.log(`[${requestId}] התקבל מידע להורדה: ${videoData.title}`);
+        
+        // החזרת התוצאות ללקוח
+        return res.json({
+            success: true,
+            data: videoData
+        });
+        
+    } catch (error) {
+        console.error(`[${requestId}] שגיאה בהורדת הוידאו:`, error);
+        return res.status(500).json({
+            success: false,
+            error: `שגיאה בהורדת הוידאו: ${error.message}`
+        });
+    }
+});
+
+/**
+ * טופס ההורדה
+ */
+app.get('/download-test', (req, res) => {
+    res.sendFile(path.join(__dirname, 'download-test.html'));
 });
 
 // הפעלת השרת

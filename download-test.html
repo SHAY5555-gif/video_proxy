@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>בדיקת הורדת וידאו מפלטפורמות</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        
+        h1, h2 {
+            color: #333;
+        }
+        
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            direction: ltr;
+        }
+        
+        button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #0b7dda;
+        }
+        
+        .result-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .error {
+            color: #e53935;
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #2196F3;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .video-info {
+            margin-bottom: 20px;
+        }
+        
+        .video-thumbnail {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .download-links {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .download-links li {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .download-link {
+            background-color: #2196F3;
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .examples {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .examples ul {
+            padding-right: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>בדיקת הורדת וידאו מפלטפורמות שונות</h1>
+    
+    <div class="container">
+        <form id="download-form">
+            <div class="form-group">
+                <label for="video-url">כתובת הוידאו:</label>
+                <input type="text" id="video-url" placeholder="הכנס כתובת סרטון (יוטיוב, טיקטוק, אינסטגרם...)" required>
+            </div>
+            
+            <button type="submit">הורד וידאו</button>
+            
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>מעבד את הבקשה...</div>
+            </div>
+            
+            <div class="error"></div>
+        </form>
+        
+        <div class="examples">
+            <h3>דוגמאות לכתובות נתמכות:</h3>
+            <ul>
+                <li>יוטיוב: https://www.youtube.com/watch?v=dQw4w9WgXcQ</li>
+                <li>טיקטוק: https://www.tiktok.com/@yeuphimzz/video/7237370304337628442</li>
+                <li>אינסטגרם: https://www.instagram.com/reel/CxnX5sUotls</li>
+                <li>פייסבוק: https://www.facebook.com/watch?v=12345</li>
+                <li>טוויטר: https://twitter.com/user/status/12345</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="result-container">
+        <h2>תוצאות ההורדה</h2>
+        <div class="video-info">
+            <img class="video-thumbnail" src="" alt="תמונה ממוזערת">
+            <h3 class="video-title"></h3>
+            <div class="video-author"></div>
+            <div class="video-duration"></div>
+            <div class="video-source"></div>
+        </div>
+        
+        <h3>קישורי הורדה:</h3>
+        <ul class="download-links"></ul>
+    </div>
+    
+    <script>
+        const RENDER_SERVICE_URL = 'https://video-proxy-obqa.onrender.com';
+        
+        // קריאת פרמטר URL מכתובת הדף
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            const results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+        
+        // טעינת כתובת הוידאו מפרמטרים והורדה אוטומטית אם יש
+        window.addEventListener('DOMContentLoaded', function() {
+            const urlParam = getUrlParameter('url');
+            if (urlParam) {
+                document.getElementById('video-url').value = urlParam;
+                
+                // הורדה אוטומטית
+                setTimeout(() => {
+                    document.getElementById('download-form').dispatchEvent(new Event('submit'));
+                }, 500);
+            }
+        });
+        
+        document.getElementById('download-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const videoUrl = document.getElementById('video-url').value.trim();
+            if (!videoUrl) {
+                showError('יש להזין כתובת וידאו');
+                return;
+            }
+            
+            // מסתיר תוצאות קודמות ושגיאות
+            document.querySelector('.result-container').style.display = 'none';
+            document.querySelector('.error').style.display = 'none';
+            
+            // מציג סימן טעינה
+            document.querySelector('.loading').style.display = 'flex';
+            
+            // שליחת בקשה לשרת
+            fetch(`${RENDER_SERVICE_URL}/download?url=${encodeURIComponent(videoUrl)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`שגיאה בהורדה (${response.status})`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data.success || !data.data) {
+                        throw new Error('לא התקבלו נתונים תקינים מהשרת');
+                    }
+                    
+                    // הצגת התוצאות
+                    displayResults(data.data);
+                })
+                .catch(error => {
+                    showError(error.message);
+                })
+                .finally(() => {
+                    // הסתרת סימן טעינה
+                    document.querySelector('.loading').style.display = 'none';
+                });
+        });
+        
+        function displayResults(videoData) {
+            const resultContainer = document.querySelector('.result-container');
+            
+            // עדכון פרטי הוידאו
+            document.querySelector('.video-title').textContent = videoData.title || 'וידאו ללא כותרת';
+            
+            if (videoData.thumbnail) {
+                document.querySelector('.video-thumbnail').src = videoData.thumbnail;
+                document.querySelector('.video-thumbnail').style.display = 'block';
+            } else {
+                document.querySelector('.video-thumbnail').style.display = 'none';
+            }
+            
+            document.querySelector('.video-author').textContent = videoData.author ? `יוצר: ${videoData.author}` : '';
+            document.querySelector('.video-duration').textContent = videoData.duration ? `אורך: ${videoData.duration}` : '';
+            document.querySelector('.video-source').textContent = `מקור: ${videoData.source || 'לא ידוע'}`;
+            
+            // יצירת קישורי הורדה
+            const linksContainer = document.querySelector('.download-links');
+            linksContainer.innerHTML = '';
+            
+            if (videoData.medias && videoData.medias.length > 0) {
+                videoData.medias.forEach(media => {
+                    const fileType = media.type || 'וידאו';
+                    const quality = media.quality || '';
+                    const extension = media.extension || 'mp4';
+                    
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span>${fileType} ${quality} (${extension})</span>
+                        <a href="${media.url}" target="_blank" download class="download-link">הורד</a>
+                    `;
+                    
+                    linksContainer.appendChild(li);
+                });
+            } else {
+                linksContainer.innerHTML = '<li>לא נמצאו קישורי הורדה</li>';
+            }
+            
+            // הצגת התוצאות
+            resultContainer.style.display = 'block';
+        }
+        
+        function showError(message) {
+            const errorElement = document.querySelector('.error');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            document.querySelector('.loading').style.display = 'none';
+        }
+    </script>
+</body>
+</html> 

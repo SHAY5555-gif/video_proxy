@@ -81,6 +81,57 @@ async function transcribeYouTubeVideo(videoUrl, format = 'srt', onStart, onSucce
 }
 
 /**
+ * פונקציה להורדת סרטונים מפלטפורמות שונות
+ * @param {string} videoUrl - כתובת הסרטון להורדה
+ * @param {Function} onStart - פונקציית callback לתחילת התהליך (אופציונלי)
+ * @param {Function} onSuccess - פונקציית callback להצלחה (אופציונלי)
+ * @param {Function} onError - פונקציית callback לשגיאה (אופציונלי)
+ * @returns {Promise} - מחזיר Promise עם נתוני הסרטון
+ */
+async function downloadVideo(videoUrl, onStart, onSuccess, onError) {
+  try {
+    // קריאה לפונקציית התחלה אם סופקה
+    if (typeof onStart === 'function') {
+      onStart();
+    }
+
+    // בניית כתובת ה-API
+    const apiUrl = `${RENDER_SERVICE_URL}/download?url=${encodeURIComponent(videoUrl)}`;
+    
+    const response = await fetch(apiUrl);
+    
+    if (!response.ok) {
+      let errorMessage = `שגיאה בהורדה (${response.status})`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (e) {
+        // התעלמות משגיאת פירוק JSON
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const result = await response.json();
+    
+    // קריאה לפונקציית הצלחה אם סופקה
+    if (typeof onSuccess === 'function') {
+      onSuccess(result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('שגיאה בהורדת וידאו:', error);
+    
+    // קריאה לפונקציית שגיאה אם סופקה
+    if (typeof onError === 'function') {
+      onError(error);
+    }
+    
+    throw error;
+  }
+}
+
+/**
  * פונקציה לבדיקת זמינות השירות
  * @returns {Promise<boolean>} - האם השירות זמין
  */
@@ -109,6 +160,7 @@ function openTranscriptionForm() {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     transcribeYouTubeVideo,
+    downloadVideo,
     checkServiceAvailability,
     openTranscriptionForm,
     RENDER_SERVICE_URL
