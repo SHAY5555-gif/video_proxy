@@ -586,10 +586,15 @@ app.get('/transcribe', async (req, res) => {
                 }
             };
             
-            // הגדרת כותרות להורדה אוטומטית
-            const fileName = `${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.json`;
+            // הגדרת כותרות להורדה אוטומטית - התאמה לתקן RFC 5987
+            const safeFileName = apiMetadata.title
+                .replace(/[^\w\s.-]/g, '_') // מחליף תווים לא-חוקיים ב-underscore
+                .replace(/\s+/g, '_')       // מחליף רווחים ב-underscore
+                .substring(0, 100)          // מגביל אורך שם קובץ
+                || 'transcript';
+                
             res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="transcript.json"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.json')}`);
             
             return res.json(jsonResponse);
         } else if (format === 'srt') {
@@ -651,10 +656,15 @@ app.get('/transcribe', async (req, res) => {
                 }
             }
 
-            // הגדרת כותרות להורדה אוטומטית
-            const fileName = `${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.srt`;
+            // הגדרת כותרות להורדה אוטומטית - התאמה לתקן RFC 5987
+            const safeFileName = apiMetadata.title
+                .replace(/[^\w\s.-]/g, '_') // מחליף תווים לא-חוקיים ב-underscore
+                .replace(/\s+/g, '_')       // מחליף רווחים ב-underscore
+                .substring(0, 100)          // מגביל אורך שם קובץ
+                || 'transcript';
+                
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
             return res.send(srtContent);
         } else if (format === 'txt') {
@@ -668,10 +678,15 @@ app.get('/transcribe', async (req, res) => {
                     .replace(/ ([.,!?:;])/g, '$1');
             }
 
-            // הגדרת כותרות להורדה אוטומטית
-            const fileName = `${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.txt`;
+            // הגדרת כותרות להורדה אוטומטית - התאמה לתקן RFC 5987
+            const safeFileName = apiMetadata.title
+                .replace(/[^\w\s.-]/g, '_') // מחליף תווים לא-חוקיים ב-underscore
+                .replace(/\s+/g, '_')       // מחליף רווחים ב-underscore
+                .substring(0, 100)          // מגביל אורך שם קובץ
+                || 'transcript';
+                
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="transcript.txt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.txt')}`);
             
             return res.send(plainText);
         } else {
