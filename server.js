@@ -575,7 +575,7 @@ app.get('/transcribe', async (req, res) => {
 
         if (format === 'json') {
             // החזרת נתוני JSON גולמיים
-            return res.json({
+            const jsonResponse = {
                 success: true,
                 data: {
                     url: actualVideoUrl,
@@ -584,7 +584,14 @@ app.get('/transcribe', async (req, res) => {
                     transcript: data,
                     language: data.language || 'unknown'
                 }
-            });
+            };
+            
+            // הגדרת כותרות להורדה אוטומטית
+            const fileName = `${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.json`;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            
+            return res.json(jsonResponse);
         } else if (format === 'srt') {
             // המרה לפורמט SRT
             let srtContent = "";
@@ -644,8 +651,11 @@ app.get('/transcribe', async (req, res) => {
                 }
             }
 
-            res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.srt"`);
+            // הגדרת כותרות להורדה אוטומטית
+            const fileName = `${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.srt`;
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            
             return res.send(srtContent);
         } else if (format === 'txt') {
             // המרה לפורמט טקסט פשוט
@@ -658,8 +668,11 @@ app.get('/transcribe', async (req, res) => {
                     .replace(/ ([.,!?:;])/g, '$1');
             }
 
-            res.setHeader('Content-Type', 'text/plain');
-            res.setHeader('Content-Disposition', `attachment; filename="${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.txt"`);
+            // הגדרת כותרות להורדה אוטומטית
+            const fileName = `${apiMetadata.title.replace(/[^a-zA-Z0-9ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ\s]/g, '_') || 'transcript'}.txt`;
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            
             return res.send(plainText);
         } else {
             throw new Error(`פורמט לא נתמך: ${format}. השתמש ב-json, srt, או txt.`);
