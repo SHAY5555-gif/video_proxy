@@ -620,7 +620,11 @@ app.get('/transcribe', async (req, res) => {
                     }
 
                     // בדיקה אם המילה מסתיימת בסימן פיסוק (. ? ! ,) וכבר הגענו למינימום מילים
-                    const hasPunctuation = word.text.match(/[.!?,]$/);
+                    const hasPunctuation = word.text.match(/[.!?,]$/) || 
+                                          // סימני פיסוק בשפות אסיאתיות (סינית, יפנית, קוריאנית)
+                                          word.text.match(/[。！？、．]$/) ||
+                                          // סימני פיסוק מלאי רוחב באסיאתית
+                                          word.text.match(/[\uFF01\uFF0C\uFF0E\uFF1F\uFF1B\uFF1A]$/);
                     
                     if (reachedMinWords && hasPunctuation) {
                         chunks.push([...currentChunk]);
@@ -645,7 +649,10 @@ app.get('/transcribe', async (req, res) => {
                         const endSrt = formatSrtTime(endTime);
 
                         const text = chunk.map(w => w.text).join(' ')
-                            .replace(/ ([.,!?:;])/g, '$1');
+                            // תיקון פיסוק באנגלית
+                            .replace(/ ([.,!?:;])/g, '$1')
+                            // תיקון פיסוק באסיאתית
+                            .replace(/ ([。！？、．\uFF01\uFF0C\uFF0E\uFF1F\uFF1B\uFF1A])/g, '$1');
 
                         srtContent += `${counter}\n`;
                         srtContent += `${startSrt} --> ${endSrt}\n`;
@@ -675,7 +682,10 @@ app.get('/transcribe', async (req, res) => {
                 plainText = data.text;
             } else if (data.words && Array.isArray(data.words)) {
                 plainText = data.words.map(w => w.text).join(' ')
-                    .replace(/ ([.,!?:;])/g, '$1');
+                    // תיקון פיסוק באנגלית
+                    .replace(/ ([.,!?:;])/g, '$1')
+                    // תיקון פיסוק באסיאתית
+                    .replace(/ ([。！？、．\uFF01\uFF0C\uFF0E\uFF1F\uFF1B\uFF1A])/g, '$1');
             }
 
             // הגדרת כותרות להורדה אוטומטית - התאמה לתקן RFC 5987
