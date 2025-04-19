@@ -609,16 +609,17 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.json"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.json')}`);
             
-            // record usage in Supabase
+            // record usage server-side to Supabase
             try {
                 await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
                     audio_seconds: usageSeconds,
-                    billed_seconds: billedSeconds
+                    billed_seconds: billedSeconds,
+                    created_at: new Date().toISOString()
                 });
                 console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
             } catch (err) {
-                console.error(`[${requestId}] Supabase: failed to record usage:`, err);
+                console.error(`[${requestId}] Supabase error recording usage:`, err);
             }
 
             return res.json(jsonResponse);
