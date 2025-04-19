@@ -1287,7 +1287,7 @@ app.get('/download-test', (req, res) => {
 });
 
  // הפעלת השרת
- app.listen(PORT, '127.0.0.1', () => {
+ app.listen(PORT, () => {
     console.log(`השרת פועל על פורט ${PORT}`);
     console.log(`שירות תמלול יוטיוב זמין בכתובות:`);
     console.log(`- ממשק משתמש: http://localhost:${PORT}/`);
