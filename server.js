@@ -1286,11 +1286,11 @@ app.get('/download-test', (req, res) => {
     res.sendFile(path.join(__dirname, 'download-test.html'));
 });
 
-// הפעלת השרת
-app.listen(PORT, () => {
+ // הפעלת השרת
+ app.listen(PORT, '127.0.0.1', () => {
     console.log(`השרת פועל על פורט ${PORT}`);
     console.log(`שירות תמלול יוטיוב זמין בכתובות:`);
     console.log(`- ממשק משתמש: http://localhost:${PORT}/`);
     console.log(`- טופס תמלול: http://localhost:${PORT}/transcribe-form`);
     console.log(`- API: http://localhost:${PORT}/transcribe?url=YOUTUBE_URL&format=srt|txt|json`);
-}); 
+});
