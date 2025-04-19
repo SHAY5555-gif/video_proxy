@@ -574,7 +574,11 @@ app.get('/transcribe', async (req, res) => {
         console.log(`[${requestId}] שלב 4: מפרמט תוצאות כ-${format}`);
 
         if (format === 'json') {
-            // החזרת נתוני JSON גולמיים
+            // החזר את הזמן שנשלח ב־query (defaults to 0)
+            const usageSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const fileNameUsage = actualVideoId || null;
+
+            // החזרת נתוני JSON גולמיים כולל שדה usage
             const jsonResponse = {
                 success: true,
                 data: {
@@ -583,6 +587,10 @@ app.get('/transcribe', async (req, res) => {
                     title: apiMetadata.title,
                     transcript: data,
                     language: data.language || 'unknown'
+                },
+                usage: {
+                    duration_seconds: usageSeconds,
+                    file_name: fileNameUsage
                 }
             };
             
