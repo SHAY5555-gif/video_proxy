@@ -12,6 +12,9 @@ const os = require('os');
 const FormData = require('form-data');
 const https = require('https');
 const http = require('http');
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('./supabase-server-config');
+const supabaseServer = createClient(supabaseUrl, supabaseKey);
 
 // הגדרות בסיסיות
 const app = express();
@@ -577,6 +580,8 @@ app.get('/transcribe', async (req, res) => {
             // החזר את הזמן שנשלח ב־query (defaults to 0)
             const usageSeconds = parseFloat(req.query.duration_seconds) || 0;
             const fileNameUsage = actualVideoId || null;
+            const userId = req.query.user_id;
+            const billedSeconds = Math.ceil(usageSeconds / 15) * 15;
 
             // החזרת נתוני JSON גולמיים כולל שדה usage
             const jsonResponse = {
@@ -604,6 +609,18 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.json"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.json')}`);
             
+            // record usage in Supabase
+            try {
+                await supabaseServer.from('transcribe_events').insert({
+                    user_id: userId,
+                    audio_seconds: usageSeconds,
+                    billed_seconds: billedSeconds
+                });
+                console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
+            } catch (err) {
+                console.error(`[${requestId}] Supabase: failed to record usage:`, err);
+            }
+
             return res.json(jsonResponse);
         } else if (format === 'srt') {
             // המרה לפורמט SRT
@@ -681,6 +698,21 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
+            // after assembling srtContent, before sending:
+            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
+            const userId = req.query.user_id;
+            try {
+                await supabaseServer.from('transcribe_events').insert({
+                    user_id: userId,
+                    audio_seconds: durationSeconds,
+                    billed_seconds: billedSeconds
+                });
+                console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
+            } catch (err) {
+                console.error(`[${requestId}] Supabase: failed to record usage:`, err);
+            }
+            
             return res.send(srtContent);
         } else if (format === 'txt') {
             // המרה לפורמט טקסט פשוט
@@ -705,6 +737,21 @@ app.get('/transcribe', async (req, res) => {
                 
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.txt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.txt')}`);
+            
+            // after assembling textContent, before sending:
+            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
+            const userId = req.query.user_id;
+            try {
+                await supabaseServer.from('transcribe_events').insert({
+                    user_id: userId,
+                    audio_seconds: durationSeconds,
+                    billed_seconds: billedSeconds
+                });
+                console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
+            } catch (err) {
+                console.error(`[${requestId}] Supabase: failed to record usage:`, err);
+            }
             
             return res.send(plainText);
         } else {
