@@ -341,6 +341,7 @@ app.get('/transcribe', async (req, res) => {
 
     console.log(`[${requestId}] ========== מתחיל תהליך תמלול ==========`);
     console.log(`[${requestId}] פרמטרים: url=${videoUrl}, id=${videoId}, format=${format}`);
+    const userId = req.query.user_id;
     
     // טיפול בכתובת או מזהה וידאו
     let actualVideoId = videoId;
@@ -580,7 +581,6 @@ app.get('/transcribe', async (req, res) => {
             // החזר את הזמן שנשלח ב־query (defaults to 0)
             const usageSeconds = parseFloat(req.query.duration_seconds) || 0;
             const fileNameUsage = actualVideoId || null;
-            const userId = req.query.user_id;
             const billedSeconds = Math.ceil(usageSeconds / 15) * 15;
 
             // החזרת נתוני JSON גולמיים כולל שדה usage
@@ -613,9 +613,10 @@ app.get('/transcribe', async (req, res) => {
             try {
                 await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
+                    video_id: fileNameUsage,
                     audio_seconds: usageSeconds,
                     billed_seconds: billedSeconds,
-                    created_at: new Date().toISOString()
+                    success: true
                 });
                 console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
             } catch (err) {
@@ -702,12 +703,13 @@ app.get('/transcribe', async (req, res) => {
             // after assembling srtContent, before sending:
             const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
-            const userId = req.query.user_id;
             try {
                 await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
+                    video_id: actualVideoId,
                     audio_seconds: durationSeconds,
-                    billed_seconds: billedSeconds
+                    billed_seconds: billedSeconds,
+                    success: true
                 });
                 console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
             } catch (err) {
@@ -742,12 +744,13 @@ app.get('/transcribe', async (req, res) => {
             // after assembling textContent, before sending:
             const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
-            const userId = req.query.user_id;
             try {
                 await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
+                    video_id: actualVideoId,
                     audio_seconds: durationSeconds,
-                    billed_seconds: billedSeconds
+                    billed_seconds: billedSeconds,
+                    success: true
                 });
                 console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
             } catch (err) {
@@ -760,6 +763,21 @@ app.get('/transcribe', async (req, res) => {
         }
 
     } catch (error) {
+        // record failure usage event to Supabase
+        try {
+            const failureDuration = parseFloat(req.query.duration_seconds) || 0;
+            const failureBilled = Math.ceil(failureDuration / 15) * 15;
+            await supabaseServer.from('transcribe_events').insert({
+                user_id: userId,
+                video_id: actualVideoId || null,
+                audio_seconds: failureDuration,
+                billed_seconds: failureBilled,
+                success: false
+            });
+            console.log(`[${requestId}] Supabase: recorded failed usage for user ${userId}`);
+        } catch (usageErr) {
+            console.error(`[${requestId}] Supabase: failed to record failed usage:`, usageErr);
+        }
         console.error(`[${requestId}] שגיאת תמלול:`, error);
 
         return res.status(500).json({
