@@ -13,8 +13,11 @@ const FormData = require('form-data');
 const https = require('https');
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
-const { supabaseUrl, supabaseKey } = require('./supabase-server-config');
-const supabaseServer = createClient(supabaseUrl, supabaseKey);
+// Update Supabase configuration with direct values
+const supabaseUrl = 'https://revvbfxlqavgjegqeqdc.supabase.co';
+const supabaseServiceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJldnZiZnhscWF2Z2plZ3FlcWRjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MzUyNzIyMSwiZXhwIjoyMDU5MTAzMjIxfQ.aV1K9hm40fhriIaRF9CBdHFzWLk5n3FzqsbTc5RjnAs';
+// Replace supabase-server-config import with direct initialization
+const supabaseServer = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 // הגדרות בסיסיות
 const app = express();
@@ -341,7 +344,15 @@ app.get('/transcribe', async (req, res) => {
 
     console.log(`[${requestId}] ========== מתחיל תהליך תמלול ==========`);
     console.log(`[${requestId}] פרמטרים: url=${videoUrl}, id=${videoId}, format=${format}`);
-    const userId = req.query.user_id;
+    
+    // Handle user_id, ensure it's a valid UUID or set to null
+    let userId = req.query.user_id;
+    if (!userId || userId === 'undefined' || userId === 'null') {
+        userId = null;
+        console.log(`[${requestId}] No user_id provided, will be recorded as null`);
+    } else {
+        console.log(`[${requestId}] Processing request for user_id: ${userId}`);
+    }
     
     // טיפול בכתובת או מזהה וידאו
     let actualVideoId = videoId;
@@ -611,14 +622,20 @@ app.get('/transcribe', async (req, res) => {
             
             // record usage server-side to Supabase
             try {
-                await supabaseServer.from('transcribe_events').insert({
+                console.log(`[${requestId}] Supabase: attempting to insert usage record for user ${userId || 'anonymous'}, duration=${usageSeconds}s`);
+                const { data, error } = await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
                     video_id: fileNameUsage,
                     audio_seconds: usageSeconds,
                     billed_seconds: billedSeconds,
                     success: true
                 });
-                console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
+                
+                if (error) {
+                    console.error(`[${requestId}] Supabase error recording usage:`, error);
+                } else {
+                    console.log(`[${requestId}] Supabase: successfully recorded usage for user ${userId || 'anonymous'}, data:`, data);
+                }
             } catch (err) {
                 console.error(`[${requestId}] Supabase error recording usage:`, err);
             }
@@ -704,16 +721,22 @@ app.get('/transcribe', async (req, res) => {
             const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
             try {
-                await supabaseServer.from('transcribe_events').insert({
+                console.log(`[${requestId}] Supabase: attempting to insert SRT usage record for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
+                const { data, error } = await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
                     video_id: actualVideoId,
                     audio_seconds: durationSeconds,
                     billed_seconds: billedSeconds,
                     success: true
                 });
-                console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
+                
+                if (error) {
+                    console.error(`[${requestId}] Supabase: failed to record SRT usage:`, error);
+                } else {
+                    console.log(`[${requestId}] Supabase: successfully recorded SRT usage for user ${userId || 'anonymous'}, data:`, data);
+                }
             } catch (err) {
-                console.error(`[${requestId}] Supabase: failed to record usage:`, err);
+                console.error(`[${requestId}] Supabase: failed to record SRT usage:`, err);
             }
             
             return res.send(srtContent);
@@ -745,16 +768,22 @@ app.get('/transcribe', async (req, res) => {
             const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
             try {
-                await supabaseServer.from('transcribe_events').insert({
+                console.log(`[${requestId}] Supabase: attempting to insert TXT usage record for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
+                const { data, error } = await supabaseServer.from('transcribe_events').insert({
                     user_id: userId,
                     video_id: actualVideoId,
                     audio_seconds: durationSeconds,
                     billed_seconds: billedSeconds,
                     success: true
                 });
-                console.log(`[${requestId}] Supabase: recorded usage for user ${userId}`);
+                
+                if (error) {
+                    console.error(`[${requestId}] Supabase: failed to record TXT usage:`, error);
+                } else {
+                    console.log(`[${requestId}] Supabase: successfully recorded TXT usage for user ${userId || 'anonymous'}, data:`, data);
+                }
             } catch (err) {
-                console.error(`[${requestId}] Supabase: failed to record usage:`, err);
+                console.error(`[${requestId}] Supabase: failed to record TXT usage:`, err);
             }
             
             return res.send(plainText);
@@ -767,16 +796,22 @@ app.get('/transcribe', async (req, res) => {
         try {
             const failureDuration = parseFloat(req.query.duration_seconds) || 0;
             const failureBilled = Math.ceil(failureDuration / 15) * 15;
-            await supabaseServer.from('transcribe_events').insert({
+            console.log(`[${requestId}] Supabase: attempting to insert FAILED usage record for user ${userId || 'anonymous'}, duration=${failureDuration}s`);
+            const { data, error } = await supabaseServer.from('transcribe_events').insert({
                 user_id: userId,
                 video_id: actualVideoId || null,
                 audio_seconds: failureDuration,
                 billed_seconds: failureBilled,
                 success: false
             });
-            console.log(`[${requestId}] Supabase: recorded failed usage for user ${userId}`);
+            
+            if (error) {
+                console.error(`[${requestId}] Supabase: failed to record failure usage:`, error);
+            } else {
+                console.log(`[${requestId}] Supabase: successfully recorded failure usage for user ${userId || 'anonymous'}, data:`, data);
+            }
         } catch (usageErr) {
-            console.error(`[${requestId}] Supabase: failed to record failed usage:`, usageErr);
+            console.error(`[${requestId}] Supabase: failed to record failure usage:`, usageErr);
         }
         console.error(`[${requestId}] שגיאת תמלול:`, error);
 
