@@ -19,6 +19,9 @@ const supabaseServiceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ
 // Replace supabase-server-config import with direct initialization
 const supabaseServer = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+// Log key prefix to verify correct key is used
+console.log(`[Supabase Init] Using URL=${supabaseUrl}, key prefix=${supabaseServiceRoleKey.slice(0,8)}`);
+
 // הגדרות בסיסיות
 const app = express();
 const PORT = process.env.PORT || 3000;
