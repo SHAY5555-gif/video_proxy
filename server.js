@@ -826,9 +826,191 @@ app.get('/transcribe', async (req, res) => {
     }
 });
 
-// Serve separate static HTML for the transcription form
+/**
+ * טופס פשוט לתמלול סרטוני יוטיוב
+ */
 app.get('/transcribe-form', (req, res) => {
-    res.sendFile(path.join(__dirname, 'transcribe-form.html'));
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="he" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>תמלול סרטוני יוטיוב</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    background-color: #f5f5f5;
+                    margin: 0;
+                    padding: 20px;
+                    display: flex;
+                    justify-content: center;
+                }
+                .container {
+                    max-width: 600px;
+                    width: 100%;
+                    background-color: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    padding: 20px;
+                }
+                h1 {
+                    color: #d32f2f;
+                    margin-top: 0;
+                    margin-bottom: 20px;
+                }
+                .form-group {
+                    margin-bottom: 15px;
+                }
+                label {
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: bold;
+                }
+                input[type="text"] {
+                    width: 100%;
+                    padding: 8px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    font-size: 16px;
+                }
+                select {
+                    padding: 8px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    font-size: 16px;
+                }
+                button {
+                    background-color: #d32f2f;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 10px 20px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    transition: background-color 0.3s;
+                }
+                button:hover {
+                    background-color: #b71c1c;
+                }
+                .status {
+                    margin-top: 20px;
+                    padding: 10px;
+                    border-radius: 4px;
+                    display: none;
+                }
+                .loading {
+                    background-color: #e3f2fd;
+                    border: 1px solid #bbdefb;
+                    display: none;
+                }
+                .error {
+                    background-color: #ffebee;
+                    border: 1px solid #ffcdd2;
+                    display: none;
+                }
+                .success {
+                    background-color: #e8f5e9;
+                    border: 1px solid #c8e6c9;
+                    display: none;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>תמלול סרטוני יוטיוב</h1>
+                <div class="form-group">
+                    <label for="youtubeUrl">הדבק כתובת סרטון יוטיוב:</label>
+                    <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." dir="ltr">
+                </div>
+                <div class="form-group">
+                    <label for="format">פורמט תמלול:</label>
+                    <select id="format">
+                        <option value="srt">SRT (כתוביות)</option>
+                        <option value="txt">טקסט בלבד</option>
+                        <option value="json">JSON (מפורט)</option>
+                    </select>
+                </div>
+                <button id="transcribeBtn">תמלל סרטון</button>
+                
+                <div id="loadingStatus" class="status loading">
+                    מתמלל את הסרטון... התהליך עשוי להימשך מספר דקות בהתאם לאורך הסרטון.
+                </div>
+                
+                <div id="errorStatus" class="status error"></div>
+                
+                <div id="successStatus" class="status success">
+                    התמלול הושלם בהצלחה! הורדת הקובץ אמורה להתחיל אוטומטית.
+                </div>
+            </div>
+            
+            <script>
+                document.getElementById('transcribeBtn').addEventListener('click', async function() {
+                    // קבלת כתובת היוטיוב והפורמט
+                    const youtubeUrl = document.getElementById('youtubeUrl').value.trim();
+                    const format = document.getElementById('format').value;
+                    
+                    // בדיקת תקינות הכתובת
+                    if (!youtubeUrl) {
+                        const errorStatus = document.getElementById('errorStatus');
+                        errorStatus.textContent = 'נא להזין כתובת סרטון יוטיוב';
+                        errorStatus.style.display = 'block';
+                        return;
+                    }
+                    
+                    // הסתרת סטטוס קודם והצגת טעינה
+                    document.getElementById('errorStatus').style.display = 'none';
+                    document.getElementById('successStatus').style.display = 'none';
+                    const loadingStatus = document.getElementById('loadingStatus');
+                    loadingStatus.style.display = 'block';
+                    
+                    try {
+                        // יצירת בקשת תמלול
+                        const transcriptionUrl = \`/transcribe?url=\${encodeURIComponent(youtubeUrl)}&format=\${format}\`;
+                        
+                        // עבור פורמטים להורדה, פתיחה בחלון חדש
+                        if (format === 'srt' || format === 'txt') {
+                            window.open(transcriptionUrl, '_blank');
+                            
+                            // הצגת הודעת הצלחה
+                            loadingStatus.style.display = 'none';
+                            document.getElementById('successStatus').style.display = 'block';
+                        } else {
+                            // עבור JSON, ביצוע fetch והצגה
+                            const response = await fetch(transcriptionUrl);
+                            
+                            if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.error || 'שגיאה בתמלול הסרטון');
+                            }
+                            
+                            const data = await response.json();
+                            
+                            // הצגת הצלחה והפניה
+                            loadingStatus.style.display = 'none';
+                            document.getElementById('successStatus').style.display = 'block';
+                            
+                            // פתיחת JSON בלשונית חדשה
+                            const jsonBlob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                            const url = URL.createObjectURL(jsonBlob);
+                            window.open(url, '_blank');
+                        }
+                    } catch (error) {
+                        // הצגת שגיאה
+                        loadingStatus.style.display = 'none';
+                        const errorStatus = document.getElementById('errorStatus');
+                        errorStatus.textContent = error.message || 'שגיאה בתמלול הסרטון';
+                        errorStatus.style.display = 'block';
+                    }
+                });
+            </script>
+            
+            <div style="margin-top: 30px; text-align: center; font-size: 14px; color: #666;">
+                <p><a href="/privacy-policy" style="color: #666; text-decoration: underline;">מדיניות פרטיות</a> | שירות תמלול יוטיוב © 2024</p>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 /**
