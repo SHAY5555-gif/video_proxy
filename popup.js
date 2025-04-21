@@ -56,7 +56,14 @@ function transcribeVideo(videoUrl, format) {
     return;
   }
   
-  const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${format}`;
+  let userIdParam = '';
+  if (typeof window.getCurrentUserId === 'function') {
+    try {
+      const uid = await window.getCurrentUserId();
+      if (uid) userIdParam = `&user_id=${encodeURIComponent(uid)}`;
+    } catch (e) {}
+  }
+  const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${format}${userIdParam}`;
   chrome.tabs.create({ url: transcriptionUrl });
 }
 

@@ -142,8 +142,17 @@ function showTranscriptionFormatMenu(videoUrl, videoId) {
     const selectedFormat = document.querySelector('input[name="format"]:checked').value;
     
     // פתיחת חלון חדש עם הבקשה לשרת הרנדר
-    const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${selectedFormat}`;
-    window.open(transcriptionUrl, '_blank');
+    (async () => {
+      let userIdParam = '';
+      try {
+        if (typeof window.getCurrentUserId === 'function') {
+          const uid = await window.getCurrentUserId();
+          if (uid) userIdParam = `&user_id=${encodeURIComponent(uid)}`;
+        }
+      } catch (e) {}
+      const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${selectedFormat}${userIdParam}`;
+      window.open(transcriptionUrl, '_blank');
+    })();
     
     // הסרת התפריט
     menu.remove();
