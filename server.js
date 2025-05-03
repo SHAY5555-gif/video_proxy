@@ -566,6 +566,7 @@ app.get('/transcribe', async (req, res) => {
         formData.append('model_id', 'scribe_v1');
         formData.append('timestamps_granularity', 'word');
         formData.append('language', ''); // זיהוי שפה אוטומטי
+        formData.append('tag_audio_events', 'false');
 
         // שליחה ל-API של ElevenLabs
         const { response: apiResponse, data } = await sendMultipartFormRequest(
