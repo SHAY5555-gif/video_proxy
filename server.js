@@ -722,6 +722,9 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
             // after assembling SRT, record usage
+            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
+            
             try {
                 console.log(`[${requestId}] Prisma: attempting to record SRT usage for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
                 const record = await prisma.transcribeEvent.create({
@@ -764,6 +767,9 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="transcript.txt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.txt')}`);
             
             // after assembling TXT, record usage
+            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
+            
             try {
                 console.log(`[${requestId}] Prisma: attempting to record TXT usage for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
                 const record = await prisma.transcribeEvent.create({
