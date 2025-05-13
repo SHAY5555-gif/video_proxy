@@ -13,6 +13,9 @@ const FormData = require('form-data');
 const https = require('https');
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
 // Update Supabase configuration with direct values
 const supabaseUrl = 'https://revvbfxlqavgjegqeqdc.supabase.co';
 const supabaseServiceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJldnZiZnhscWF2Z2plZ3FlcWRjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MzUyNzIyMSwiZXhwIjoyMDU5MTAzMjIxfQ.aV1K9hm40fhriIaRF9CBdHFzWLk5n3FzqsbTc5RjnAs';
@@ -626,22 +629,19 @@ app.get('/transcribe', async (req, res) => {
             
             // record usage server-side to Supabase
             try {
-                console.log(`[${requestId}] Supabase: attempting to insert usage record for user ${userId || 'anonymous'}, duration=${usageSeconds}s`);
-                const { data, error } = await supabaseServer.from('transcribe_events').insert({
-                    user_id: userId,
-                    video_id: fileNameUsage,
-                    audio_seconds: usageSeconds,
-                    billed_seconds: billedSeconds,
-                    success: true
+                console.log(`[${requestId}] Prisma: attempting to record usage for user ${userId || 'anonymous'}, duration=${usageSeconds}s`);
+                const record = await prisma.transcribeEvent.create({
+                    data: {
+                        userId: userId,
+                        videoId: fileNameUsage,
+                        audioSeconds: usageSeconds,
+                        billedSeconds: billedSeconds,
+                        success: true,
+                    },
                 });
-                
-                if (error) {
-                    console.error(`[${requestId}] Supabase error recording usage:`, error);
-                } else {
-                    console.log(`[${requestId}] Supabase: successfully recorded usage for user ${userId || 'anonymous'}, data:`, data);
-                }
+                console.log(`[${requestId}] Prisma: successfully recorded usage for user ${userId || 'anonymous'}, record:`, record);
             } catch (err) {
-                console.error(`[${requestId}] Supabase error recording usage:`, err);
+                console.error(`[${requestId}] Prisma error recording usage:`, err);
             }
 
             return res.json(jsonResponse);
@@ -721,26 +721,21 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
-            // after assembling srtContent, before sending:
-            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
-            const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
+            // after assembling SRT, record usage
             try {
-                console.log(`[${requestId}] Supabase: attempting to insert SRT usage record for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
-                const { data, error } = await supabaseServer.from('transcribe_events').insert({
-                    user_id: userId,
-                    video_id: actualVideoId,
-                    audio_seconds: durationSeconds,
-                    billed_seconds: billedSeconds,
-                    success: true
+                console.log(`[${requestId}] Prisma: attempting to record SRT usage for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
+                const record = await prisma.transcribeEvent.create({
+                    data: {
+                        userId: userId,
+                        videoId: actualVideoId,
+                        audioSeconds: durationSeconds,
+                        billedSeconds: billedSeconds,
+                        success: true,
+                    },
                 });
-                
-                if (error) {
-                    console.error(`[${requestId}] Supabase: failed to record SRT usage:`, error);
-                } else {
-                    console.log(`[${requestId}] Supabase: successfully recorded SRT usage for user ${userId || 'anonymous'}, data:`, data);
-                }
+                console.log(`[${requestId}] Prisma: successfully recorded SRT usage for user ${userId || 'anonymous'}, record:`, record);
             } catch (err) {
-                console.error(`[${requestId}] Supabase: failed to record SRT usage:`, err);
+                console.error(`[${requestId}] Prisma error recording SRT usage:`, err);
             }
             
             return res.send(srtContent);
@@ -768,26 +763,21 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.txt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.txt')}`);
             
-            // after assembling textContent, before sending:
-            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
-            const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
+            // after assembling TXT, record usage
             try {
-                console.log(`[${requestId}] Supabase: attempting to insert TXT usage record for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
-                const { data, error } = await supabaseServer.from('transcribe_events').insert({
-                    user_id: userId,
-                    video_id: actualVideoId,
-                    audio_seconds: durationSeconds,
-                    billed_seconds: billedSeconds,
-                    success: true
+                console.log(`[${requestId}] Prisma: attempting to record TXT usage for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
+                const record = await prisma.transcribeEvent.create({
+                    data: {
+                        userId: userId,
+                        videoId: actualVideoId,
+                        audioSeconds: durationSeconds,
+                        billedSeconds: billedSeconds,
+                        success: true,
+                    },
                 });
-                
-                if (error) {
-                    console.error(`[${requestId}] Supabase: failed to record TXT usage:`, error);
-                } else {
-                    console.log(`[${requestId}] Supabase: successfully recorded TXT usage for user ${userId || 'anonymous'}, data:`, data);
-                }
+                console.log(`[${requestId}] Prisma: successfully recorded TXT usage for user ${userId || 'anonymous'}, record:`, record);
             } catch (err) {
-                console.error(`[${requestId}] Supabase: failed to record TXT usage:`, err);
+                console.error(`[${requestId}] Prisma error recording TXT usage:`, err);
             }
             
             return res.send(plainText);
