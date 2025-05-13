@@ -4,6 +4,7 @@
   "description": "שירות לתמלול סרטוני יוטיוב באמצעות ElevenLabs",
   "main": "server.js",
   "scripts": {
+    "postinstall": "npx prisma db push && npx prisma generate",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
