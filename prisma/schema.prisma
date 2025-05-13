@@ -3,4 +3,8 @@ datasource db {
   url          = env("DATABASE_URL")
   // optionally, add a directUrl for introspection/fallback
   // directUrl   = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
 } 
