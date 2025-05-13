@@ -37,10 +37,14 @@ model TranscribeEvent {
   id            Int      @id @default(autoincrement())
   userId        Int?     @map("user_id")
   videoId       String   @map("video_id")
+  provider      String   @default("unknown")
   audioSeconds  Int      @map("audio_seconds")
   billedSeconds Int      @map("billed_seconds")
+  videoDuration Int?     @map("video_duration_seconds")
+  createdAt     DateTime @default(now()) @map("created_at")
   success       Boolean
   user          User?    @relation(fields: [userId], references: [id])
+  @@index([userId], name: "idx_transcribe_events_user")
   @@map("transcribe_events")
 }
 

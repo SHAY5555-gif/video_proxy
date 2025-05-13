@@ -285,6 +285,37 @@ function formatSrtTime(seconds) {
 }
 
 /**
+ * Convert various duration string formats (e.g. "1:23:45", "12:34", "90", "90s") to seconds (int)
+ */
+function parseDurationToSeconds(raw) {
+    if (!raw) return 0;
+    if (typeof raw === 'number') {
+        return Math.floor(raw);
+    }
+    if (typeof raw === 'string') {
+        // Remove trailing 's'
+        raw = raw.trim();
+        if (/^\d+\s*s$/.test(raw)) {
+            raw = raw.replace(/s$/, '');
+        }
+        // HH:MM:SS or MM:SS
+        if (raw.includes(':')) {
+            const parts = raw.split(':').map(p => parseInt(p, 10));
+            if (parts.some(isNaN)) return 0;
+            if (parts.length === 3) {
+                return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            } else if (parts.length === 2) {
+                return parts[0] * 60 + parts[1];
+            }
+        }
+        // plain integer string seconds
+        const n = parseInt(raw, 10);
+        if (!isNaN(n)) return n;
+    }
+    return 0;
+}
+
+/**
  * פונקציית עזר: שליחת בקשת multipart form
  */
 async function sendMultipartFormRequest(url, formData, headers = {}) {
@@ -432,11 +463,14 @@ app.get('/transcribe', async (req, res) => {
 
             console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
 
-            // חילוץ כותרת מהמטא-דאטה אם זמינה
+            // חילוץ כותרת ומשך אם זמינים
             if (metadata?.title) {
                 apiMetadata.title = metadata.title;
-                console.log(`[${requestId}] כותרת סרטון: ${apiMetadata.title}`);
             }
+            if (metadata?.duration) {
+                apiMetadata.duration = parseDurationToSeconds(metadata.duration);
+            }
+            console.log(`[${requestId}] RapidAPI מטא-דאטה: title=${apiMetadata.title}, duration=${apiMetadata.duration}s`);
         } else if (actualVideoUrl) {
             // שלב 1.1: קבלת קישור הורדה עבור פלטפורמות אחרות באמצעות API
             console.log(`[${requestId}] מוריד וידאו מפלטפורמה כללית: ${actualVideoUrl}`);
@@ -509,7 +543,7 @@ app.get('/transcribe', async (req, res) => {
                 videoDownloadUrl = zmRawData.medias[0].url;
                 apiMetadata.title = zmRawData.title || apiMetadata.title;
                 apiMetadata.id = zmRawData.id || apiMetadata.id || actualVideoId;
-                apiMetadata.duration = zmRawData.duration || apiMetadata.duration;
+                apiMetadata.duration = parseDurationToSeconds(zmRawData.duration) || apiMetadata.duration;
                 console.log(`[${requestId}] ZMIO מטא-דאטה: id=${apiMetadata.id}, duration=${apiMetadata.duration}s, qualities=${zmRawData.medias.map(m => m.quality).join(', ')}`);
                 console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-ZMIO API: ${apiMetadata.title}`);
             }
@@ -592,7 +626,16 @@ app.get('/transcribe', async (req, res) => {
 
         if (format === 'json') {
             // החזר את הזמן שנשלח ב־query (defaults to 0)
-            const usageSeconds = parseFloat(req.query.duration_seconds) || (parseFloat(apiMetadata.duration) || 0);
+            let usageSeconds = parseFloat(req.query.duration_seconds);
+            if (isNaN(usageSeconds) || usageSeconds === 0) {
+                // נסה מהתמלול עצמו
+                if (data && data.words && Array.isArray(data.words) && data.words.length > 0) {
+                    usageSeconds = parseFloat(data.words[data.words.length - 1].end) || 0;
+                }
+            }
+            if (!usageSeconds && apiMetadata.duration) {
+                usageSeconds = parseFloat(apiMetadata.duration) || 0;
+            }
             const fileNameUsage = actualVideoId || actualVideoUrl;
             const billedSeconds = Math.ceil(usageSeconds / 15) * 15;
 
@@ -629,7 +672,9 @@ app.get('/transcribe', async (req, res) => {
                     data: {
                         userId: userId,
                         videoId: fileNameUsage,
-                        audioSeconds: usageSeconds,
+                        provider: 'youtube',
+                        videoDuration: Math.round(usageSeconds),
+                        audioSeconds: Math.round(usageSeconds),
                         billedSeconds: billedSeconds,
                         success: true,
                     },
@@ -717,7 +762,15 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
             // after assembling SRT, record usage
-            const durationSeconds = parseFloat(req.query.duration_seconds) || (parseFloat(apiMetadata.duration) || 0);
+            let durationSeconds = parseFloat(req.query.duration_seconds);
+            if (isNaN(durationSeconds) || durationSeconds === 0) {
+                if (data && data.words && Array.isArray(data.words) && data.words.length > 0) {
+                    durationSeconds = parseFloat(data.words[data.words.length - 1].end) || 0;
+                }
+            }
+            if (!durationSeconds && apiMetadata.duration) {
+                durationSeconds = parseFloat(apiMetadata.duration) || 0;
+            }
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
             
             try {
@@ -726,7 +779,9 @@ app.get('/transcribe', async (req, res) => {
                     data: {
                         userId: userId,
                         videoId: actualVideoId || actualVideoUrl,
-                        audioSeconds: durationSeconds,
+                        provider: 'zmio',
+                        videoDuration: Math.round(durationSeconds),
+                        audioSeconds: Math.round(durationSeconds),
                         billedSeconds: billedSeconds,
                         success: true,
                     },
@@ -771,7 +826,9 @@ app.get('/transcribe', async (req, res) => {
                     data: {
                         userId: userId,
                         videoId: actualVideoId || actualVideoUrl,
-                        audioSeconds: durationSeconds,
+                        provider: 'zmio',
+                        videoDuration: Math.round(durationSeconds),
+                        audioSeconds: Math.round(durationSeconds),
                         billedSeconds: billedSeconds,
                         success: true,
                     },
@@ -795,7 +852,7 @@ app.get('/transcribe', async (req, res) => {
             const { data, error } = await supabaseServer.from('transcribe_events').insert({
                 user_id: userId,
                 video_id: actualVideoId || null,
-                audio_seconds: failureDuration,
+                audio_seconds: Math.round(failureDuration),
                 billed_seconds: failureBilled,
                 success: false
             });
@@ -1272,7 +1329,7 @@ app.get('/download', async (req, res) => {
                 author: metadata.channel || '',
                 title: metadata.title || `Video ${videoId}`,
                 thumbnail: metadata.thumb || '',
-                duration: metadata.duration || '',
+                duration: parseDurationToSeconds(metadata.duration) || '',
                 medias: [{
                     url: metadata.url,
                     quality: metadata.resolution || '720p',
@@ -1316,7 +1373,7 @@ app.get('/download', async (req, res) => {
                 author: zmRawData.author || '',
                 title: zmRawData.title || `Video ${videoUrl}`,
                 thumbnail: zmRawData.thumbnail || '',
-                duration: zmRawData.duration || '',
+                duration: parseDurationToSeconds(zmRawData.duration) || '',
                 medias: zmRawData.medias.map(media => ({
                     url: media.url,
                     quality: media.quality || '',
