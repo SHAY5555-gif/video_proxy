@@ -498,25 +498,19 @@ app.get('/transcribe', async (req, res) => {
                 }
 
                 // קבלת נתוני הוידאו
-                const data = await apiResponse.json();
+                const zmRawData = await apiResponse.json();
                 
-                // בדיקה שהתקבלו נתונים תקינים
-                if (!data || !data.medias || data.medias.length === 0) {
+                // בדיקה שהתקבלו נתוני וידאו תקינים
+                if (!zmRawData || !zmRawData.medias || zmRawData.medias.length === 0) {
                     throw new Error('לא התקבלו נתונים תקינים מה-API');
                 }
                 
-                // בחירת הקישור עם האיכות הנמוכה ביותר
-                let lowestQualityMedia = data.medias[0];
-                for (const media of data.medias) {
-                    if (media.type === 'video' && 
-                        (lowestQualityMedia.quality.includes('720') || lowestQualityMedia.quality.includes('1080'))) {
-                        lowestQualityMedia = media;
-                    }
-                }
-                
-                videoDownloadUrl = lowestQualityMedia.url;
-                apiMetadata.title = data.title || apiMetadata.title;
-                
+                // מיפוי למבנה אחיד כמו סנכרון עם RapidAPI branch
+                videoDownloadUrl = zmRawData.medias[0].url;
+                apiMetadata.title = zmRawData.title || apiMetadata.title;
+                apiMetadata.id = zmRawData.id || apiMetadata.id || actualVideoId;
+                apiMetadata.duration = zmRawData.duration || apiMetadata.duration;
+                console.log(`[${requestId}] ZMIO מטא-דאטה: id=${apiMetadata.id}, duration=${apiMetadata.duration}s, qualities=${zmRawData.medias.map(m => m.quality).join(', ')}`);
                 console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-ZMIO API: ${apiMetadata.title}`);
             }
         }
@@ -583,6 +577,7 @@ app.get('/transcribe', async (req, res) => {
         }
 
         console.log(`[${requestId}] התמלול התקבל בהצלחה`);
+        console.log(`[${requestId}] אורך תמלול (מספר מילים): ${data.words && Array.isArray(data.words) ? data.words.length : 'N/A'}`);
         
         // שלב 3: ניקוי הקובץ הזמני
         try {
@@ -597,7 +592,7 @@ app.get('/transcribe', async (req, res) => {
 
         if (format === 'json') {
             // החזר את הזמן שנשלח ב־query (defaults to 0)
-            const usageSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const usageSeconds = parseFloat(req.query.duration_seconds) || (parseFloat(apiMetadata.duration) || 0);
             const fileNameUsage = actualVideoId || actualVideoUrl;
             const billedSeconds = Math.ceil(usageSeconds / 15) * 15;
 
@@ -722,7 +717,7 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
             // after assembling SRT, record usage
-            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const durationSeconds = parseFloat(req.query.duration_seconds) || (parseFloat(apiMetadata.duration) || 0);
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
             
             try {
@@ -767,7 +762,7 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="transcript.txt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.txt')}`);
             
             // after assembling TXT, record usage
-            const durationSeconds = parseFloat(req.query.duration_seconds) || 0;
+            const durationSeconds = parseFloat(req.query.duration_seconds) || (parseFloat(apiMetadata.duration) || 0);
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
             
             try {
@@ -1307,12 +1302,28 @@ app.get('/download', async (req, res) => {
             }
 
             // קבלת נתוני הוידאו
-            videoData = await apiResponse.json();
+            const zmRawData = await apiResponse.json();
             
-            // בדיקה שהתקבלו נתונים תקינים
-            if (!videoData || !videoData.medias || videoData.medias.length === 0) {
+            // בדיקה שהתקבלו נתוני וידאו תקינים
+            if (!zmRawData || !zmRawData.medias || zmRawData.medias.length === 0) {
                 throw new Error('לא התקבלו נתונים תקינים מה-API');
             }
+            
+            // מיפוי למבנה אחיד כמו סנכרון עם RapidAPI branch
+            videoData = {
+                url: videoUrl,
+                source: 'zmio',
+                author: zmRawData.author || '',
+                title: zmRawData.title || `Video ${videoUrl}`,
+                thumbnail: zmRawData.thumbnail || '',
+                duration: zmRawData.duration || '',
+                medias: zmRawData.medias.map(media => ({
+                    url: media.url,
+                    quality: media.quality || '',
+                    extension: media.extension || (media.url.split('.').pop() || ''),
+                    type: media.type || 'video'
+                }))
+            };
         }
         
         console.log(`[${requestId}] התקבל מידע להורדה: ${videoData.title}`);
