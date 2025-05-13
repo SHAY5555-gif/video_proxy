@@ -598,7 +598,7 @@ app.get('/transcribe', async (req, res) => {
         if (format === 'json') {
             // החזר את הזמן שנשלח ב־query (defaults to 0)
             const usageSeconds = parseFloat(req.query.duration_seconds) || 0;
-            const fileNameUsage = actualVideoId || null;
+            const fileNameUsage = actualVideoId || actualVideoUrl;
             const billedSeconds = Math.ceil(usageSeconds / 15) * 15;
 
             // החזרת נתוני JSON גולמיים כולל שדה usage
@@ -730,7 +730,7 @@ app.get('/transcribe', async (req, res) => {
                 const record = await prisma.transcribeEvent.create({
                     data: {
                         userId: userId,
-                        videoId: actualVideoId,
+                        videoId: actualVideoId || actualVideoUrl,
                         audioSeconds: durationSeconds,
                         billedSeconds: billedSeconds,
                         success: true,
@@ -775,7 +775,7 @@ app.get('/transcribe', async (req, res) => {
                 const record = await prisma.transcribeEvent.create({
                     data: {
                         userId: userId,
-                        videoId: actualVideoId,
+                        videoId: actualVideoId || actualVideoUrl,
                         audioSeconds: durationSeconds,
                         billedSeconds: billedSeconds,
                         success: true,
