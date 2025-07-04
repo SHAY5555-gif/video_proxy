@@ -437,9 +437,7 @@ app.get('/transcribe', async (req, res) => {
             // שלב 1.1: קבלת קישור הורדה מיוטיוב באמצעות RapidAPI
             console.log(`[${requestId}] מוריד סרטון יוטיוב (MP4) באמצעות RapidAPI`);
             
-            const videoFormat = 'mp4';
-            const videoResolution = '360'; // רזולוציה נמוכה יותר להורדה מהירה יותר
-            const apiUrl = `https://${RAPIDAPI_HOST}/v1/download?v=${actualVideoId}&type=${videoFormat}&resolution=${videoResolution}`;
+            const apiUrl = `https://${RAPIDAPI_HOST}/download-mp3/${actualVideoId}?quality=low`;
 
             console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
             const apiMetadataResponse = await fetchWithRetries(apiUrl, {
