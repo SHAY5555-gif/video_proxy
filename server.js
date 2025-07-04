@@ -46,7 +46,7 @@ app.use(express.static(path.join(__dirname)));
 // מפתחות API
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_3cc5eba36a57dc0b8652796ce6c3a6f28277c977e93070da";
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "b7855e36bamsh122b17f6deeb803p1aca9bjsnb238415c0d28";
-const RAPIDAPI_HOST = "youtube-search-download3.p.rapidapi.com";
+const RAPIDAPI_HOST = "youtube-mp3-audio-video-downloader.p.rapidapi.com";
 const ZMIO_API_KEY = process.env.ZMIO_API_KEY || "hBsrDies";
 
 // יצירת תיקייה זמנית לאחסון קבצי מדיה
@@ -1278,9 +1278,8 @@ app.get('/download', async (req, res) => {
         let videoData;
         
         if (isYouTube) {
-            // שימוש ב-RAPID API עבור יוטיוב
-            console.log(`[${requestId}] זוהה סרטון יוטיוב, משתמש ב-RAPID API`);
-            
+            // שימוש ב-RapidAPI החדש להורדת mp3 מיוטיוב
+            console.log(`[${requestId}] זוהה סרטון יוטיוב, משתמש ב-youtube-mp3-audio-video-downloader.p.rapidapi.com`);
             // חילוץ מזהה הוידאו
             let videoId;
             try {
@@ -1294,50 +1293,64 @@ app.get('/download', async (req, res) => {
                 console.error(`[${requestId}] שגיאה בפירוק כתובת YouTube:`, error);
                 throw new Error('שגיאה בפירוק כתובת YouTube');
             }
-            
+
             if (!videoId) {
                 throw new Error('לא ניתן לחלץ מזהה וידאו מהכתובת');
             }
-            
-            const videoFormat = 'mp4';
-            const videoResolution = '720'; // רזולוציה גבוהה יותר להורדה באיכות טובה
-            const apiUrl = `https://${RAPIDAPI_HOST}/v1/download?v=${videoId}&type=${videoFormat}&resolution=${videoResolution}`;
-            
-            console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
+
+            const apiUrl = `https://youtube-mp3-audio-video-downloader.p.rapidapi.com/download-mp3/${videoId}?quality=low`;
+            console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קובץ mp3: ${apiUrl}`);
             const apiResponse = await fetchWithRetries(apiUrl, {
                 method: 'GET',
                 headers: {
                     'x-rapidapi-key': RAPIDAPI_KEY,
-                    'x-rapidapi-host': RAPIDAPI_HOST
+                    'x-rapidapi-host': 'youtube-mp3-audio-video-downloader.p.rapidapi.com'
                 }
             });
 
             if (!apiResponse.ok) {
-                throw new Error(`נכשל לקבל מידע מ-RapidAPI: ${apiResponse.status}`);
+                throw new Error(`נכשל לקבל קובץ mp3 מ-RapidAPI: ${apiResponse.status}`);
             }
 
-            const metadata = await apiResponse.json();
-            
-            if (!metadata?.url) {
-                throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
-            }
-            
-            // המרה למבנה אחיד
+            // שמירת קובץ mp3 זמני
+            const tempMp3Name = path.join(TEMP_DIR, `${videoId}_${Date.now()}.mp3`);
+            await new Promise((resolve, reject) => {
+                const fileStream = fs.createWriteStream(tempMp3Name);
+                apiResponse.body.pipe(fileStream);
+                apiResponse.body.on('error', (err) => {
+                    fileStream.close();
+                    reject(new Error(`שגיאה בהורדת mp3: ${err.message}`));
+                });
+                fileStream.on('finish', () => {
+                    const stats = fs.statSync(tempMp3Name);
+                    console.log(`[${requestId}] הורדת mp3 הושלמה. גודל: ${formatFileSize(stats.size)}`);
+                    if (stats.size === 0) {
+                        reject(new Error('קובץ ה-mp3 שהורד ריק.'));
+                    } else {
+                        resolve();
+                    }
+                });
+                fileStream.on('error', (err) => {
+                    reject(new Error(`שגיאה בשמירת mp3: ${err.message}`));
+                });
+            });
+
+            // החזרת קישור להורדה
             videoData = {
                 url: videoUrl,
                 source: 'youtube',
-                author: metadata.channel || '',
-                title: metadata.title || `Video ${videoId}`,
-                thumbnail: metadata.thumb || '',
-                duration: parseDurationToSeconds(metadata.duration) || '',
+                author: '',
+                title: `YouTube MP3 ${videoId}`,
+                thumbnail: '',
+                duration: '',
                 medias: [{
-                    url: metadata.url,
-                    quality: metadata.resolution || '720p',
-                    extension: 'mp4',
-                    type: 'video'
+                    url: `/media/${path.basename(tempMp3Name)}`,
+                    quality: 'low',
+                    extension: 'mp3',
+                    type: 'audio'
                 }]
             };
-            
+
         } else {
             // שימוש בספק API החדש לשאר הפלטפורמות
             console.log(`[${requestId}] משתמש ב-ZMIO API עבור הורדת תוכן מ: ${videoUrl}`);
