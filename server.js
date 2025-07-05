@@ -452,8 +452,29 @@ app.get('/transcribe', async (req, res) => {
                 throw new Error(`נכשל לקבל מטא-דאטה מ-RapidAPI: ${apiMetadataResponse.status}`);
             }
 
-            const metadata = await apiMetadataResponse.json();
-            videoDownloadUrl = metadata?.url;
+            const contentType = apiMetadataResponse.headers.get('content-type') || '';
+            let metadata;
+            if (contentType.includes('application/json')) {
+                metadata = await apiMetadataResponse.json();
+                videoDownloadUrl = metadata?.url;
+                if (!videoDownloadUrl) {
+                    throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
+                }
+            } else {
+                // RapidAPI returned MP3 binary directly – save it
+                tempFileName = path.join(TEMP_DIR, `${actualVideoId}_${Date.now()}.mp3`);
+                await new Promise((resolve, reject) => {
+                    const fileStream = fs.createWriteStream(tempFileName);
+                    apiMetadataResponse.body.pipe(fileStream);
+                    apiMetadataResponse.body.on('error', err => {
+                        fileStream.close();
+                        reject(new Error(`שגיאה בהורדת mp3: ${err.message}`));
+                    });
+                    fileStream.on('finish', () => resolve());
+                });
+                console.log(`[${requestId}] mp3 התקבל ישירות מ-RapidAPI ונשמר: ${tempFileName}`);
+                videoDownloadUrl = null; // skip extra download step
+            }
 
             if (!videoDownloadUrl) {
                 throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
@@ -547,8 +568,9 @@ app.get('/transcribe', async (req, res) => {
             }
         }
 
-        // שלב 1.2: הורדת הוידאו לאחסון בשרת
-        console.log(`[${requestId}] מוריד את תוכן הוידאו...`);
+        if (videoDownloadUrl) {
+            // שלב 1.2: הורדת הוידאו לאחסון בשרת
+            console.log(`[${requestId}] מוריד את תוכן הוידאו...`);
         const videoResponse = await fetchWithRetries(videoDownloadUrl, {
             method: 'GET',
             headers: {
@@ -590,6 +612,7 @@ app.get('/transcribe', async (req, res) => {
         // שלב 2: שליחה ל-ElevenLabs לתמלול
         console.log(`[${requestId}] שלב 2: שולח ל-ElevenLabs לתמלול`);
 
+        } // end if (videoDownloadUrl)
         const formData = new FormData();
         formData.append('file', fs.createReadStream(tempFileName));
         formData.append('model_id', 'scribe_v1');
