@@ -429,7 +429,7 @@ app.get('/transcribe', async (req, res) => {
         // שלב 1: הורדת וידאו
         console.log(`[${requestId}] שלב 1: מוריד וידאו במדיה ${isYouTube ? 'יוטיוב' : 'כללי'}`);
 
-        const tempFileName = path.join(TEMP_DIR, `${actualVideoId || Date.now()}_${Date.now()}.mp4`);
+        let tempFileName = path.join(TEMP_DIR, `${actualVideoId || Date.now()}_${Date.now()}.mp4`);
         let apiMetadata = { title: `Video ${actualVideoId || Date.now()}`, duration: 0 };
         let videoDownloadUrl = '';
 
