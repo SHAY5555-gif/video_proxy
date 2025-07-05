@@ -476,9 +476,6 @@ app.get('/transcribe', async (req, res) => {
                 videoDownloadUrl = null; // skip extra download step
             }
 
-            if (!videoDownloadUrl) {
-                throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
-            }
 
             console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
 
