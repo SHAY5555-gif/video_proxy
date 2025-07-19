@@ -27,7 +27,7 @@ console.log(`[Supabase Init] Using URL=${supabaseUrl}, key prefix=${supabaseServ
 
 // הגדרות בסיסיות
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8081;
 
 // הפעלת CORS
 app.use(require('cors')());
@@ -82,117 +82,136 @@ setInterval(() => {
 app.get('/privacy-policy', (req, res) => {
     res.send(`
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privacy Policy - YouTube Custom Subtitles Extension</title>
+    <title>מדיניות פרטיות - שירות תמלול וידאו</title>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
+            font-family: 'Assistant', sans-serif;
+            background-color: #f4f7f9;
             color: #333;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.8;
+        }
+        .container {
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
-        h1, h2, h3 {
+        h1, h2 {
             color: #2c3e50;
+            font-weight: 600;
         }
         h1 {
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
+            font-size: 2.5rem;
+            text-align: center;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
         }
         h2 {
-            margin-top: 30px;
+            font-size: 1.8rem;
+            margin-top: 40px;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
         }
-        p {
-            margin: 15px 0;
+        p, li {
+            font-size: 1.1rem;
+            color: #555;
         }
         ul {
-            padding-left: 20px;
+            padding-right: 20px;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
         }
         .footer {
+            text-align: center;
             margin-top: 40px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
-            font-size: 0.9em;
-            color: #666;
+            border-top: 1px solid #e0e0e0;
         }
     </style>
 </head>
 <body>
-    <h1>Privacy Policy</h1>
-    <p>Last updated: May 1, 2023</p>
+    <div class="container">
+        <h1>מדיניות פרטיות</h1>
+        <p>עודכן לאחרונה: 19 ליולי, 2025</p>
 
-    <p>Thank you for using the YouTube Custom Subtitles Extension ("Extension"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Extension.</p>
-    
-    <p>Please read this Privacy Policy carefully. By using the Extension, you agree to the collection and use of information in accordance with this policy.</p>
+        <p>תודה על השימוש בשירות תמלול הוידאו שלנו. מדיניות פרטיות זו מסבירה כיצד אנו אוספים, משתמשים, חושפים ושומרים על המידע שלך בעת השימוש בשירות.</p>
+        
+        <p>אנא קרא מדיניות זו בעיון. בעצם השימוש בשירות, אתה מסכים לאיסוף ושימוש במידע בהתאם למדיניות זו.</p>
 
-    <h2>Information We Collect</h2>
-    <p>We collect the following types of information:</p>
+        <h2>איזה מידע אנו אוספים</h2>
+        
+        <h3>מידע אישי</h3>
+        <ul>
+            <li><strong>פרטי חשבון:</strong> בעת התחברות עם גוגל, אנו מקבלים את כתובת המייל והשם שלך כדי ליצור ולנהל את חשבונך.</li>
+            <li><strong>נתוני אימות:</strong> אנו משתמשים באימות של גוגל כדי לוודא את זהותך. איננו שומרים את סיסמת גוגל שלך.</li>
+        </ul>
 
-    <h3>Personal Information</h3>
-    <ul>
-        <li><strong>Account Information:</strong> When you choose to sign in with Google, we receive your email address and name to create and manage your account.</li>
-        <li><strong>Authentication Data:</strong> We use Google authentication to verify your identity. We do not store your Google password.</li>
-    </ul>
+        <h3>מידע שימוש</h3>
+        <ul>
+            <li><strong>שימוש בשירות:</strong> אנו אוספים מידע על אופן השימוש שלך בשירות, כולל אילו תכונות נמצאות בשימוש והעדפות התמלול שלך.</li>
+            <li><strong>נתוני וידאו:</strong> אנו אוספים מידע על סרטוני הוידאו שאתה מתמלל באמצעות השירות שלנו.</li>
+        </ul>
 
-    <h3>Usage Information</h3>
-    <ul>
-        <li><strong>Extension Usage:</strong> We collect information about how you use the Extension, including which features you use and your subtitle preferences.</li>
-        <li><strong>YouTube Data:</strong> We collect information about the YouTube videos you're watching when you use our Extension to add subtitles.</li>
-    </ul>
+        <h2>כיצד אנו משתמשים במידע שלך</h2>
+        <p>אנו משתמשים במידע שאנו אוספים כדי:</p>
+        <ul>
+            <li>לספק, לתחזק ולשפר את השירות</li>
+            <li>ליצור ולנהל את חשבון המשתמש שלך</li>
+            <li>לשמור את קבצי התמלול וההעדפות שלך</li>
+            <li>לעבד ולספק את בקשות התמלול שלך</li>
+            <li>להגיב לפניות ובקשות תמיכה</li>
+            <li>לנטר ולנתח דפוסי שימוש ומגמות</li>
+        </ul>
 
-    <h2>How We Use Your Information</h2>
-    <p>We use the information we collect to:</p>
-    <ul>
-        <li>Provide, maintain, and improve the Extension</li>
-        <li>Create and manage your user account</li>
-        <li>Save your subtitle files and preferences</li>
-        <li>Process and deliver your subtitle requests</li>
-        <li>Respond to your inquiries and support requests</li>
-        <li>Monitor and analyze usage patterns and trends</li>
-    </ul>
+        <h2>אחסון נתונים</h2>
+        <p>אנו משתמשים ב-Supabase, שירות מסד נתונים מאובטח, לאחסון פרטי החשבון והעדפות התמלול שלך. הנתונים שלך מאוחסנים באופן מאובטח ומוגנים באמצעי אבטחה סטנדרטיים בתעשייה.</p>
 
-    <h2>Data Storage</h2>
-    <p>We use Supabase, a secure database service, to store your account information and subtitle preferences. Your data is stored securely and is protected by industry-standard security measures.</p>
+        <h2>שירותי צד שלישי</h2>
+        <p>השירות שלנו משתלב עם שירותי צד שלישי הבאים:</p>
+        <ul>
+            <li><strong>אימות גוגל:</strong> לאימות משתמשים. אנא עיין ב<a href="https://policies.google.com/privacy" target="_blank">מדיניות הפרטיות של גוגל</a> למידע על אופן הטיפול שלהם בנתונים שלך.</li>
+            <li><strong>Supabase:</strong> לאחסון נתונים. אנא עיין ב<a href="https://supabase.io/privacy" target="_blank">מדיניות הפרטיות של Supabase</a> למידע על אופן הטיפול שלהם בנתונים שלך.</li>
+        </ul>
 
-    <h2>Third-Party Services</h2>
-    <p>Our Extension integrates with the following third-party services:</p>
-    <ul>
-        <li><strong>Google Authentication:</strong> For user authentication. Please refer to <a href="https://policies.google.com/privacy" target="_blank">Google's Privacy Policy</a> for information on how they handle your data.</li>
-        <li><strong>Supabase:</strong> For data storage. Please refer to <a href="https://supabase.io/privacy" target="_blank">Supabase's Privacy Policy</a> for information on how they handle your data.</li>
-    </ul>
+        <h2>שיתוף נתונים</h2>
+        <p>איננו מוכרים, סוחרים או מעבירים בדרך אחרת את המידע האישי שלך לגורמים חיצוניים, למעט כפי שמתואר במדיניות פרטיות זו. אנו עשויים לשתף את המידע שלך עם ספקי שירות המסייעים לנו בתפעול השירות, כל עוד אותם צדדים מסכימים לשמור על סודיות המידע.</p>
 
-    <h2>Data Sharing</h2>
-    <p>We do not sell, trade, or otherwise transfer your personal information to outside parties except as described in this Privacy Policy. We may share your information with service providers who assist us in operating our Extension, conducting our business, or serving you, so long as those parties agree to keep this information confidential.</p>
+        <h2>אבטחה</h2>
+        <p>אנו מיישמים מגוון אמצעי אבטחה כדי לשמור על בטיחות המידע האישי שלך. עם זאת, שום שיטת שידור דרך האינטרנט או אחסון אלקטרוני אינה מאובטחת ב-100%, ואיננו יכולים להבטיח את אבטחתה המוחלטת.</p>
 
-    <h2>Security</h2>
-    <p>We implement a variety of security measures to maintain the safety of your personal information. However, no method of transmission over the Internet or electronic storage is 100% secure, and we cannot guarantee its absolute security.</p>
+        <h2>הזכויות שלך</h2>
+        <p>יש לך את הזכות:</p>
+        <ul>
+            <li>לגשת למידע האישי שיש לנו עליך</li>
+            <li>לתקן אי דיוקים במידע האישי שלך</li>
+            <li>למחוק את המידע האישי שלך</li>
+            <li>להתנגד לעיבוד המידע האישי שלך</li>
+        </ul>
 
-    <h2>Your Rights</h2>
-    <p>You have the right to:</p>
-    <ul>
-        <li>Access the personal information we have about you</li>
-        <li>Correct inaccuracies in your personal information</li>
-        <li>Delete your personal information</li>
-        <li>Object to the processing of your personal information</li>
-        <li>Request a copy of your personal information in a structured, commonly used, and machine-readable format</li>
-    </ul>
+        <h2>שינויים במדיניות פרטיות זו</h2>
+        <p>אנו עשויים לעדכן את מדיניות הפרטיות שלנו מעת לעת. אנו נודיע לך על כל שינוי על ידי פרסום מדיניות הפרטיות החדשה בעמוד זה ועדכון תאריך "עודכן לאחרונה".</p>
 
-    <h2>Children's Privacy</h2>
-    <p>Our Extension is not intended for use by children under the age of 13, and we do not knowingly collect personal information from children under 13.</p>
+        <h2>צור קשר</h2>
+        <p>אם יש לך שאלות כלשהן לגבי מדיניות פרטיות זו, אנא צור איתנו קשר בכתובת: support@video-transcript.com</p>
 
-    <h2>Changes to This Privacy Policy</h2>
-    <p>We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date.</p>
-
-    <h2>Contact Us</h2>
-    <p>If you have any questions about this Privacy Policy, please contact us at:</p>
-    <p>Email: support@youtube-custom-subtitles.com</p>
-
-    <div class="footer">
-        <p>YouTube Custom Subtitles Extension</p>
+        <div class="footer">
+            <p><a href="/">חזרה לעמוד הבית</a></p>
+        </div>
     </div>
 </body>
 </html>
@@ -433,136 +452,38 @@ app.get('/transcribe', async (req, res) => {
         let apiMetadata = { title: `Video ${actualVideoId || Date.now()}`, duration: 0 };
         let videoDownloadUrl = '';
 
-        if (isYouTube && actualVideoId) {
-            // שלב 1.1: קבלת קישור הורדה מיוטיוב באמצעות RapidAPI
-            console.log(`[${requestId}] מוריד סרטון יוטיוב (MP4) באמצעות RapidAPI`);
-            
+        if (isYouTube) {
+            // Use RapidAPI for YouTube
             const apiUrl = `https://${RAPIDAPI_HOST}/download-mp3/${actualVideoId}?quality=low`;
-
-            console.log(`[${requestId}] קורא ל-RapidAPI לקבלת קישור הורדה: ${apiUrl}`);
             const apiMetadataResponse = await fetchWithRetries(apiUrl, {
                 method: 'GET',
-                headers: {
-                    'x-rapidapi-key': RAPIDAPI_KEY,
-                    'x-rapidapi-host': RAPIDAPI_HOST
-                }
+                headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': RAPIDAPI_HOST }
             });
-
-            if (!apiMetadataResponse.ok) {
-                throw new Error(`נכשל לקבל מטא-דאטה מ-RapidAPI: ${apiMetadataResponse.status}`);
-            }
-
-            const contentType = apiMetadataResponse.headers.get('content-type') || '';
-            let metadata;
-            if (contentType.includes('application/json')) {
-                metadata = await apiMetadataResponse.json();
-                videoDownloadUrl = metadata?.url;
-                if (!videoDownloadUrl) {
-                    throw new Error('RapidAPI לא החזיר קישור הורדה תקין');
-                }
-            } else {
-                // RapidAPI returned MP3 binary directly – save it
-                tempFileName = path.join(TEMP_DIR, `${actualVideoId}_${Date.now()}.mp3`);
-                await new Promise((resolve, reject) => {
-                    const fileStream = fs.createWriteStream(tempFileName);
-                    apiMetadataResponse.body.pipe(fileStream);
-                    apiMetadataResponse.body.on('error', err => {
-                        fileStream.close();
-                        reject(new Error(`שגיאה בהורדת mp3: ${err.message}`));
-                    });
-                    fileStream.on('finish', () => resolve());
-                });
-                console.log(`[${requestId}] mp3 התקבל ישירות מ-RapidAPI ונשמר: ${tempFileName}`);
-                videoDownloadUrl = null; // skip extra download step
-            }
-
-
-            console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-RapidAPI`);
-
-            // חילוץ כותרת ומשך אם זמינים
-            if (metadata?.title) {
-                apiMetadata.title = metadata.title;
-            }
-            if (metadata?.duration) {
-                apiMetadata.duration = parseDurationToSeconds(metadata.duration);
-            }
-            console.log(`[${requestId}] RapidAPI מטא-דאטה: title=${apiMetadata.title}, duration=${apiMetadata.duration}s`);
-        } else if (actualVideoUrl) {
-            // שלב 1.1: קבלת קישור הורדה עבור פלטפורמות אחרות באמצעות API
-            console.log(`[${requestId}] מוריד וידאו מפלטפורמה כללית: ${actualVideoUrl}`);
+            if (!apiMetadataResponse.ok) throw new Error(`RapidAPI failed: ${apiMetadataResponse.status}`);
             
-            // בדיקה האם זה יוטיוב בלי מזהה
-            if (isYouTube && !actualVideoId) {
-                // ננסה שוב להשתמש בכתובת
-                console.log(`[${requestId}] ננסה להשתמש בכתובת היוטיוב המלאה`);
-                
-                // שימוש ב-API עבור הורדה באמצעות כתובת מלאה
-                const apiResponse = await fetchWithRetries('/download', {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    baseUrl: req.protocol + '://' + req.get('host'),
-                    params: { url: actualVideoUrl }
-                });
-                
-                if (!apiResponse.ok) {
-                    throw new Error(`נכשל לקבל מידע מ-API ההורדה: ${apiResponse.status}`);
-                }
-                
-                const data = await apiResponse.json();
-                
-                if (!data.success || !data.data || !data.data.medias || data.data.medias.length === 0) {
-                    throw new Error('לא התקבלו נתוני הורדה תקינים');
-                }
-                
-                // בחירת הקישור עם האיכות הנמוכה ביותר
-                let lowestQualityMedia = data.data.medias[0];
-                for (const media of data.data.medias) {
-                    if (media.type === 'video' && 
-                        (lowestQualityMedia.quality.includes('720') || lowestQualityMedia.quality.includes('1080'))) {
-                        lowestQualityMedia = media;
-                    }
-                }
-                
-                videoDownloadUrl = lowestQualityMedia.url;
-                apiMetadata.title = data.data.title || apiMetadata.title;
-                
-                console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-API ההורדה המקומי: ${apiMetadata.title}`);
-            } else {
-                // עבור פלטפורמות אחרות, השתמש ב-ZMIO API
-                const apiUrl = 'https://api.zm.io.vn/v1/social/autolink';
-                
-                console.log(`[${requestId}] משתמש ב-ZMIO API עבור הורדת תוכן מ: ${actualVideoUrl}`);
-                const apiResponse = await fetchWithRetries(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'apikey': ZMIO_API_KEY
-                    },
-                    body: JSON.stringify({ url: actualVideoUrl })
-                });
+            const metadata = await apiMetadataResponse.json();
+            videoDownloadUrl = metadata?.url;
+            if (!videoDownloadUrl) throw new Error('RapidAPI did not return a valid download URL');
+            
+            apiMetadata.title = metadata.title || apiMetadata.title;
+            apiMetadata.duration = parseDurationToSeconds(metadata.duration) || apiMetadata.duration;
 
-                if (!apiResponse.ok) {
-                    throw new Error(`נכשל לקבל מידע מ-ZMIO API: ${apiResponse.status}`);
-                }
+        } else {
+            // Use ZMIO API for other platforms
+            const apiUrl = 'https://api.zm.io.vn/v1/social/autolink';
+            const apiResponse = await fetchWithRetries(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': ZMIO_API_KEY },
+                body: JSON.stringify({ url: actualVideoUrl })
+            });
+            if (!apiResponse.ok) throw new Error(`ZMIO API failed: ${apiResponse.status}`);
 
-                // קבלת נתוני הוידאו
-                const zmRawData = await apiResponse.json();
-                
-                // בדיקה שהתקבלו נתוני וידאו תקינים
-                if (!zmRawData || !zmRawData.medias || zmRawData.medias.length === 0) {
-                    throw new Error('לא התקבלו נתונים תקינים מה-API');
-                }
-                
-                // מיפוי למבנה אחיד כמו סנכרון עם RapidAPI branch
-                videoDownloadUrl = zmRawData.medias[0].url;
-                apiMetadata.title = zmRawData.title || apiMetadata.title;
-                apiMetadata.id = zmRawData.id || apiMetadata.id || actualVideoId;
-                apiMetadata.duration = parseDurationToSeconds(zmRawData.duration) || apiMetadata.duration;
-                console.log(`[${requestId}] ZMIO מטא-דאטה: id=${apiMetadata.id}, duration=${apiMetadata.duration}s, qualities=${zmRawData.medias.map(m => m.quality).join(', ')}`);
-                console.log(`[${requestId}] התקבל קישור להורדת וידאו מ-ZMIO API: ${apiMetadata.title}`);
-            }
+            const zmRawData = await apiResponse.json();
+            if (!zmRawData || !zmRawData.medias || zmRawData.medias.length === 0) throw new Error('Invalid data from ZMIO API');
+            
+            videoDownloadUrl = zmRawData.medias[0].url;
+            apiMetadata.title = zmRawData.title || apiMetadata.title;
+            apiMetadata.duration = parseDurationToSeconds(zmRawData.duration) || apiMetadata.duration;
         }
 
         if (videoDownloadUrl) {
@@ -893,192 +814,146 @@ app.get('/transcribe', async (req, res) => {
     }
 });
 
-/**
- * טופס פשוט לתמלול סרטוני יוטיוב
- */
-app.get('/transcribe-form', (req, res) => {
-    res.send(`
+app.get('/transcribe-youtube', (req, res) => {
+    res.send(getTranscribeFormHTML('youtube'));
+});
+
+app.get('/transcribe-other', (req, res) => {
+    res.send(getTranscribeFormHTML('other'));
+});
+
+function getTranscribeFormHTML(platform) {
+    const title = platform === 'youtube' ? 'תמלול מיוטיוב' : 'תמלול מפלטפורמות אחרות';
+    const actionUrl = `/transcribe`;
+
+    return `
         <!DOCTYPE html>
         <html lang="he" dir="rtl">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>תמלול סרטוני יוטיוב</title>
+            <title>${title}</title>
+            <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
             <style>
                 body {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    background-color: #f5f5f5;
+                    font-family: 'Assistant', sans-serif;
+                    background-color: #f4f7f9;
+                    color: #333;
                     margin: 0;
                     padding: 20px;
                     display: flex;
-                    justify-content: center;
+                    flex-direction: column;
+                    align-items: center;
+                    min-height: 100vh;
                 }
                 .container {
-                    max-width: 600px;
+                    max-width: 700px;
                     width: 100%;
-                    background-color: white;
+                    background-color: #ffffff;
                     border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    padding: 20px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+                    padding: 40px;
+                    margin-top: 20px;
                 }
                 h1 {
-                    color: #d32f2f;
+                    text-align: center;
+                    font-size: 2.5rem;
+                    font-weight: 700;
                     margin-top: 0;
-                    margin-bottom: 20px;
+                    margin-bottom: 30px;
+                    color: #2c3e50;
                 }
                 .form-group {
-                    margin-bottom: 15px;
+                    margin-bottom: 25px;
                 }
                 label {
                     display: block;
-                    margin-bottom: 5px;
-                    font-weight: bold;
+                    margin-bottom: 10px;
+                    font-weight: 600;
+                    font-size: 1.1rem;
                 }
-                input[type="text"] {
+                input[type="text"], select {
                     width: 100%;
-                    padding: 8px;
+                    padding: 15px;
                     border: 1px solid #ddd;
-                    border-radius: 4px;
-                    font-size: 16px;
+                    border-radius: 5px;
+                    font-size: 1rem;
+                    box-sizing: border-box;
                 }
-                select {
-                    padding: 8px;
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    font-size: 16px;
-                }
-                button {
-                    background-color: #d32f2f;
+                .cta-button {
+                    width: 100%;
+                    background-color: #3498db;
                     color: white;
                     border: none;
-                    border-radius: 4px;
-                    padding: 10px 20px;
-                    font-size: 16px;
+                    border-radius: 5px;
+                    padding: 15px;
+                    font-size: 1.2rem;
+                    font-weight: 600;
                     cursor: pointer;
                     transition: background-color 0.3s;
                 }
-                button:hover {
-                    background-color: #b71c1c;
+                .cta-button:hover {
+                    background-color: #2980b9;
                 }
                 .status {
-                    margin-top: 20px;
-                    padding: 10px;
-                    border-radius: 4px;
+                    margin-top: 25px;
+                    padding: 15px;
+                    border-radius: 8px;
+                    text-align: center;
+                    font-weight: 600;
                     display: none;
                 }
                 .loading {
-                    background-color: #e3f2fd;
-                    border: 1px solid #bbdefb;
-                    display: none;
+                    color: #3498db;
                 }
                 .error {
-                    background-color: #ffebee;
-                    border: 1px solid #ffcdd2;
-                    display: none;
+                    background-color: #e74c3c20;
+                    border: 1px solid #e74c3c;
+                    color: #e74c3c;
                 }
                 .success {
-                    background-color: #e8f5e9;
-                    border: 1px solid #c8e6c9;
-                    display: none;
+                    background-color: #2ecc7120;
+                    border: 1px solid #2ecc71;
+                    color: #2ecc71;
+                }
+                footer {
+                    text-align: center;
+                    padding: 20px;
+                    margin-top: auto;
+                    color: #7f8c8d;
+                }
+                footer a {
+                    color: #3498db;
+                    text-decoration: none;
                 }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>תמלול סרטוני יוטיוב</h1>
-                <div class="form-group">
-                    <label for="youtubeUrl">הדבק כתובת סרטון יוטיוב:</label>
-                    <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." dir="ltr">
-                </div>
-                <div class="form-group">
-                    <label for="format">פורמט תמלול:</label>
-                    <select id="format">
-                        <option value="srt">SRT (כתוביות)</option>
-                        <option value="txt">טקסט בלבד</option>
-                        <option value="json">JSON (מפורט)</option>
-                    </select>
-                </div>
-                <button id="transcribeBtn">תמלל סרטון</button>
-                
-                <div id="loadingStatus" class="status loading">
-                    מתמלל את הסרטון... התהליך עשוי להימשך מספר דקות בהתאם לאורך הסרטון.
-                </div>
-                
-                <div id="errorStatus" class="status error"></div>
-                
-                <div id="successStatus" class="status success">
-                    התמלול הושלם בהצלחה! הורדת הקובץ אמורה להתחיל אוטומטית.
-                </div>
+                <h1>${title}</h1>
+                <form id="transcribeForm" action="${actionUrl}" method="get" target="_blank">
+                    <div class="form-group">
+                        <label for="videoUrl">הדבק כתובת וידאו:</label>
+                        <input type="text" id="videoUrl" name="url" placeholder="https://..." dir="ltr" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="format">בחר פורמט תמלול:</label>
+                        <select id="format" name="format">
+                            <option value="srt">SRT (כתוביות)</option>
+                            <option value="txt">טקסט בלבד</option>
+                            <option value="json">JSON (למפתחים)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="cta-button">תמלל וידאו</button>
+                </form>
             </div>
-            
-            <script>
-                document.getElementById('transcribeBtn').addEventListener('click', async function() {
-                    // קבלת כתובת היוטיוב והפורמט
-                    const youtubeUrl = document.getElementById('youtubeUrl').value.trim();
-                    const format = document.getElementById('format').value;
-                    
-                    // בדיקת תקינות הכתובת
-                    if (!youtubeUrl) {
-                        const errorStatus = document.getElementById('errorStatus');
-                        errorStatus.textContent = 'נא להזין כתובת סרטון יוטיוב';
-                        errorStatus.style.display = 'block';
-                        return;
-                    }
-                    
-                    // הסתרת סטטוס קודם והצגת טעינה
-                    document.getElementById('errorStatus').style.display = 'none';
-                    document.getElementById('successStatus').style.display = 'none';
-                    const loadingStatus = document.getElementById('loadingStatus');
-                    loadingStatus.style.display = 'block';
-                    
-                    try {
-                        // יצירת בקשת תמלול
-                        const transcriptionUrl = \`/transcribe?url=\${encodeURIComponent(youtubeUrl)}&format=\${format}\`;
-                        
-                        // עבור פורמטים להורדה, פתיחה בחלון חדש
-                        if (format === 'srt' || format === 'txt') {
-                            window.open(transcriptionUrl, '_blank');
-                            
-                            // הצגת הודעת הצלחה
-                            loadingStatus.style.display = 'none';
-                            document.getElementById('successStatus').style.display = 'block';
-                        } else {
-                            // עבור JSON, ביצוע fetch והצגה
-                            const response = await fetch(transcriptionUrl);
-                            
-                            if (!response.ok) {
-                                const errorData = await response.json();
-                                throw new Error(errorData.error || 'שגיאה בתמלול הסרטון');
-                            }
-                            
-                            const data = await response.json();
-                            
-                            // הצגת הצלחה והפניה
-                            loadingStatus.style.display = 'none';
-                            document.getElementById('successStatus').style.display = 'block';
-                            
-                            // פתיחת JSON בלשונית חדשה
-                            const jsonBlob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-                            const url = URL.createObjectURL(jsonBlob);
-                            window.open(url, '_blank');
-                        }
-                    } catch (error) {
-                        // הצגת שגיאה
-                        loadingStatus.style.display = 'none';
-                        const errorStatus = document.getElementById('errorStatus');
-                        errorStatus.textContent = error.message || 'שגיאה בתמלול הסרטון';
-                        errorStatus.style.display = 'block';
-                    }
-                });
-            </script>
-            
-            <div style="margin-top: 30px; text-align: center; font-size: 14px; color: #666;">
-                <p><a href="/privacy-policy" style="color: #666; text-decoration: underline;">מדיניות פרטיות</a> | שירות תמלול יוטיוב © 2024</p>
-            </div>
+            <footer>
+                <p><a href="/">חזרה לעמוד הבית</a></p>
+            </footer>
         </body>
         </html>
-    `);
-});
+    `;
+}
 
 /**
  * עמוד הבית הראשי
@@ -1090,182 +965,104 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>שירות תמלול יוטיוב</title>
+            <title>שירות תמלול וידאו</title>
+            <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
             <style>
                 body {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    background-color: #f5f5f5;
+                    font-family: 'Assistant', sans-serif;
+                    background-color: #f4f7f9;
+                    color: #333;
                     margin: 0;
                     padding: 0;
-                    color: #333;
-                }
-                .header {
-                    background-color: #d32f2f;
-                    color: white;
-                    padding: 40px 0;
-                    text-align: center;
-                }
-                .header h1 {
-                    margin: 0;
-                    font-size: 36px;
+                    line-height: 1.7;
                 }
                 .container {
-                    max-width: 800px;
+                    max-width: 960px;
                     margin: 0 auto;
-                    padding: 20px;
+                    padding: 40px 20px;
                 }
-                .card {
-                    background-color: white;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    padding: 20px;
-                    margin-bottom: 20px;
+                .header {
+                    text-align: center;
+                    padding: 40px 0;
                 }
-                h2 {
-                    color: #d32f2f;
-                    margin-top: 0;
+                .header h1 {
+                    font-size: 3rem;
+                    font-weight: 700;
+                    margin: 0;
+                    color: #2c3e50;
+                }
+                .header p {
+                    font-size: 1.2rem;
+                    color: #7f8c8d;
+                    margin-top: 10px;
                 }
                 .cta-button {
                     display: inline-block;
-                    background-color: #d32f2f;
+                    background-color: #3498db;
                     color: white;
                     text-decoration: none;
-                    padding: 12px 25px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    margin-top: 10px;
+                    padding: 15px 35px;
+                    border-radius: 5px;
+                    font-weight: 600;
+                    font-size: 1.1rem;
                     transition: background-color 0.3s;
                 }
                 .cta-button:hover {
-                    background-color: #b71c1c;
+                    background-color: #2980b9;
                 }
-                .features {
-                    display: flex;
-                    flex-wrap: wrap;
-                    margin-top: 20px;
-                    gap: 20px;
-                }
-                .feature {
-                    flex: 1 1 200px;
-                    background-color: #f9f9f9;
-                    padding: 15px;
+                .section {
+                    background-color: #ffffff;
                     border-radius: 8px;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                    padding: 30px;
+                    margin-bottom: 30px;
+                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
                 }
-                .feature h3 {
+                .section h2 {
+                    font-size: 2rem;
+                    font-weight: 600;
+                    color: #2c3e50;
                     margin-top: 0;
-                    color: #d32f2f;
+                    border-bottom: 2px solid #3498db;
+                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                }
+                .platform-buttons {
+                    display: flex;
+                    gap: 20px;
+                    justify-content: center;
+                    margin: 20px 0;
                 }
                 footer {
                     text-align: center;
-                    padding: 20px;
-                    color: #666;
-                    font-size: 14px;
+                    padding: 40px 20px;
+                    margin-top: 20px;
+                    border-top: 1px solid #e0e0e0;
+                    color: #7f8c8d;
                 }
-                code {
-                    background-color: #f1f1f1;
-                    padding: 3px 6px;
-                    border-radius: 3px;
-                    font-family: Consolas, Monaco, 'Andale Mono', monospace;
-                }
-                .buttons-container {
-                    display: flex;
-                    gap: 15px;
-                    flex-wrap: wrap;
-                }
-                .platform-badge {
-                    display: inline-block;
-                    padding: 5px 10px;
-                    background-color: #f1f1f1;
-                    border-radius: 4px;
-                    margin-right: 5px;
-                    margin-bottom: 5px;
-                    font-size: 14px;
+                footer a {
+                    color: #3498db;
+                    text-decoration: none;
                 }
             </style>
         </head>
         <body>
             <div class="header">
-                <h1>שירות תמלול יוטיוב</h1>
+                <h1>שירות תמלול וידאו</h1>
+                <p>הופכים כל סרטון לטקסט, במהירות ובדיוק</p>
             </div>
             
             <div class="container">
-                <div class="card">
-                    <h2>קבל תמליל לכל סרטון יוטיוב</h2>
-                    <p>השירות שלנו מאפשר לך לקבל תמליל מדויק של כל סרטון יוטיוב בקלות ובמהירות. פשוט הדבק את כתובת הסרטון ובחר את פורמט התמלול הרצוי.</p>
-                    <a href="/transcribe-form" class="cta-button">לתמלול סרטון</a>
-                    
-                    <div class="features">
-                        <div class="feature">
-                            <h3>קבצי SRT</h3>
-                            <p>תמלול בפורמט SRT המתאים לכתוביות, כולל חותמות זמן מדויקות</p>
-                        </div>
-                        <div class="feature">
-                            <h3>טקסט פשוט</h3>
-                            <p>תמלול בפורמט טקסט פשוט, מושלם לשימוש במסמכים</p>
-                        </div>
-                        <div class="feature">
-                            <h3>פורמט JSON</h3>
-                            <p>תמלול בפורמט JSON עם מידע מפורט על כל מילה וחותמת זמן</p>
-                        </div>
+                <div class="section">
+                    <h2>בחר פלטפורמה לתמלול</h2>
+                    <div class="platform-buttons">
+                        <a href="/transcribe-youtube" class="cta-button">תמלול מיוטיוב</a>
+                        <a href="/transcribe-other" class="cta-button">תמלול מפלטפורמות אחרות</a>
                     </div>
-                </div>
-                
-                <!-- כרטיס חדש להורדה מאתרים נוספים -->
-                <div class="card">
-                    <h2>הורדה ותמלול מפלטפורמות נוספות</h2>
-                    <p>עכשיו באפשרותך להוריד ולתמלל סרטונים ממגוון רחב של פלטפורמות מעבר ליוטיוב!</p>
-                    
-                    <div class="platform-badges">
-                        <span class="platform-badge">Instagram</span>
-                        <span class="platform-badge">Facebook</span>
-                        <span class="platform-badge">TikTok</span>
-                        <span class="platform-badge">Twitter/X</span>
-                        <span class="platform-badge">Vimeo</span>
-                        <span class="platform-badge">ועוד...</span>
-                    </div>
-                    
-                    <p>נסה את השירות החדש שלנו להורדת וידאו מכל פלטפורמה ותמלול אוטומטי בקלות!</p>
-                    
-                    <div class="buttons-container">
-                        <a href="/download-test" class="cta-button">הורדת וידאו מכל אתר</a>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <h2>שימוש ב-API</h2>
-                    <p>ניתן להשתמש ב-API שלנו ישירות:</p>
-                    <p><code>/transcribe?url=YOUTUBE_VIDEO_URL&format=srt|txt|json</code></p>
-                    <p>או</p>
-                    <p><code>/transcribe?id=YOUTUBE_VIDEO_ID&format=srt|txt|json</code></p>
-                    
-                    <h3>דוגמאות:</h3>
-                    <ul>
-                        <li>
-                            <p>תמלול סרטון לפורמט SRT:</p>
-                            <code>/transcribe?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&format=srt</code>
-                        </li>
-                        <li>
-                            <p>תמלול סרטון לפורמט טקסט פשוט:</p>
-                            <code>/transcribe?id=dQw4w9WgXcQ&format=txt</code>
-                        </li>
-                    </ul>
-                </div>
-                
-                <div class="card">
-                    <h2>אודות השירות</h2>
-                    <p>שירות תמלול יוטיוב משתמש בטכנולוגיה מתקדמת של ElevenLabs לתמלול מדויק של סרטוני וידאו. השירות שלנו מאפשר:</p>
-                    <ul>
-                        <li>תמלול סרטונים בכל שפה</li>
-                        <li>דיוק גבוה במיוחד בזיהוי דיבור</li>
-                        <li>תמיכה בסרטונים ארוכים</li>
-                        <li>יצירת כתוביות מוכנות להטמעה בסרטונים</li>
-                    </ul>
                 </div>
             </div>
             
             <footer>
-                <p>שירות תמלול יוטיוב © 2024 | <a href="/privacy-policy" style="color: #666; text-decoration: underline;">מדיניות פרטיות</a> | כל הזכויות שמורות</p>
+                <p>© 2024 שירות תמלול וידאו | <a href="/privacy-policy">מדיניות פרטיות</a> | כל הזכויות שמורות</p>
             </footer>
         </body>
         </html>
