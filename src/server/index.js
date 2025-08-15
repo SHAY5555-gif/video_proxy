@@ -223,7 +223,7 @@ app.get('/privacy-policy', (req, res) => {
  * Health check endpoint for Render
  */
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+    res.status(200).json({ status: 'OK' });
 });
 
 /**
