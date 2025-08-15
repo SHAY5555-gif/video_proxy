@@ -22,7 +22,7 @@
     "default_title": "תמלול סרטוני יוטיוב"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background.js"
   },
   "content_scripts": [
     {
@@ -38,7 +38,7 @@
         "*://*.reddit.com/*",
         "*://*.vimeo.com/*"
       ],
-      "js": ["content-script.js"],
+      "js": ["src/content-script.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
     }
