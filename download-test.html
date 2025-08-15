@@ -4,212 +4,231 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>הורדה ותמלול מפלטפורמות</title>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary-color: #ff4757;
+            --secondary-color: #34e7e4;
+            --background-color: #1e1e1e;
+            --surface-color: #2d2d2d;
+            --text-color: #f1f2f6;
+            --muted-text-color: #a4a4a4;
+            --error-color: #e74c3c;
+        }
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
+            font-family: 'Assistant', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
             padding: 20px;
-            background-color: #f5f5f5;
-            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
         }
-        
-        h1, h2 {
-            color: #333;
-        }
-        
         .container {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
+            max-width: 800px;
+            width: 100%;
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            padding: 40px;
             margin-bottom: 20px;
         }
-        
+        h1, h2 {
+            text-align: center;
+            font-weight: 700;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-top: 0;
+            margin-bottom: 30px;
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        h2 {
+            font-size: 2rem;
+            color: var(--secondary-color);
+            margin-bottom: 20px;
+        }
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
-        
         label {
             display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
+            margin-bottom: 10px;
+            font-weight: 600;
+            font-size: 1.1rem;
         }
-        
         input[type="text"] {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
+            padding: 15px;
+            border: 1px solid #444;
+            border-radius: 8px;
+            font-size: 1rem;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            box-sizing: border-box;
             direction: ltr;
         }
-        
-        button {
-            background-color: #2196F3;
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(255, 71, 87, 0.3);
+        }
+        .cta-button {
+            width: 100%;
+            background-color: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 4px;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        button:hover {
-            background-color: #0b7dda;
-        }
-        
-        .result-container {
-            background-color: white;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
+            padding: 15px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        .status {
             margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
             display: none;
         }
-        
-        .error {
-            color: #e53935;
-            background-color: #ffebee;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-            display: none;
-        }
-        
         .loading {
-            display: none;
+            display: flex;
             align-items: center;
+            justify-content: center;
             gap: 10px;
-            margin-top: 10px;
+            color: var(--secondary-color);
         }
-        
         .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #2196F3;
+            border: 3px solid rgba(52, 231, 228, 0.2);
+            border-top: 3px solid var(--secondary-color);
             border-radius: 50%;
             width: 20px;
             height: 20px;
             animation: spin 1s linear infinite;
         }
-        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        .video-info {
-            margin-bottom: 20px;
+        .error {
+            background-color: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--error-color);
+            color: var(--error-color);
         }
-        
+        .result-container {
+            display: none;
+        }
+        .video-info {
+            text-align: center;
+            margin-bottom: 30px;
+        }
         .video-thumbnail {
             max-width: 100%;
+            max-height: 300px;
             border-radius: 8px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
-        
+        .video-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+        .video-author, .video-duration, .video-source {
+            color: var(--muted-text-color);
+        }
         .download-links {
             list-style: none;
             padding: 0;
             margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
         }
-        
         .download-links li {
-            margin-bottom: 10px;
-            padding: 10px;
-            background-color: #f5f5f5;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background-color: var(--background-color);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
         }
-        
         .download-link {
-            background-color: #2196F3;
-            color: white;
+            display: block;
+            background-color: var(--secondary-color);
+            color: var(--background-color);
             text-decoration: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        
-        .examples {
-            margin-top: 20px;
-            font-size: 14px;
-        }
-        
-        .examples ul {
-            padding-right: 20px;
-        }
-        
-        .transcribe-section {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-        }
-        
-        .format-options {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .format-option {
-            display: flex;
-            align-items: center;
-        }
-        
-        .transcribe-button {
-            background-color: #d32f2f;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: 600;
             transition: background-color 0.2s;
         }
-        
-        .transcribe-button:hover {
-            background-color: #b71c1c;
+        .download-link:hover {
+            background-color: #2bc4c1;
+        }
+        .transcribe-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #444;
+        }
+        .format-options {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .format-option label {
+            cursor: pointer;
+            padding: 10px 20px;
+            border-radius: 50px;
+            background-color: var(--background-color);
+            transition: background-color 0.2s;
+        }
+        .format-option input {
+            display: none;
+        }
+        .format-option input:checked + label {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            margin-top: auto;
+            color: var(--muted-text-color);
+        }
+        footer a {
+            color: var(--secondary-color);
+            text-decoration: none;
         }
     </style>
 </head>
 <body>
-    <h1>הורדה ותמלול מפלטפורמות שונות</h1>
-    
     <div class="container">
+        <h1>הורדה ותמלול מכל פלטפורמה</h1>
         <form id="download-form">
             <div class="form-group">
-                <label for="video-url">כתובת הוידאו:</label>
-                <input type="text" id="video-url" placeholder="הכנס כתובת סרטון (יוטיוב, טיקטוק, אינסטגרם...)" required>
+                <label for="video-url">הדבק כתובת וידאו:</label>
+                <input type="text" id="video-url" placeholder="לדוגמה: https://www.youtube.com/watch?v=..." required>
             </div>
-            
-            <button type="submit">הורד וידאו</button>
-            
-            <div class="loading">
+            <button type="submit" class="cta-button">קבל פרטי וידאו</button>
+            <div class="status loading" id="download-loading">
                 <div class="spinner"></div>
-                <div>מעבד את הבקשה...</div>
+                <span>מעבד בקשה...</span>
             </div>
-            
-            <div class="error"></div>
+            <div class="status error" id="download-error"></div>
         </form>
-        
-        <div class="examples">
-            <h3>דוגמאות לכתובות נתמכות:</h3>
-            <ul>
-                <li>יוטיוב: https://www.youtube.com/watch?v=dQw4w9WgXcQ</li>
-                <li>טיקטוק: https://www.tiktok.com/@yeuphimzz/video/7237370304337628442</li>
-                <li>אינסטגרם: https://www.instagram.com/reel/CxnX5sUotls</li>
-                <li>פייסבוק: https://www.facebook.com/watch?v=12345</li>
-                <li>טוויטר: https://twitter.com/user/status/12345</li>
-            </ul>
-        </div>
     </div>
     
-    <div class="result-container">
-        <h2>תוצאות ההורדה</h2>
+    <div class="container result-container">
+        <h2>תוצאות</h2>
         <div class="video-info">
             <img class="video-thumbnail" src="" alt="תמונה ממוזערת">
             <h3 class="video-title"></h3>
@@ -221,41 +240,49 @@
         <h3>קישורי הורדה:</h3>
         <ul class="download-links"></ul>
         
-        <!-- אזור תמלול חדש -->
         <div class="transcribe-section">
-            <h3>תמלול אוטומטי לסרטון:</h3>
-            <p>באפשרותך לקבל תמלול אוטומטי של הסרטון. בחר את פורמט התמלול הרצוי:</p>
+            <h3>תמלול אוטומטי</h3>
+            <p>בחר פורמט וקבל תמלול מלא של הסרטון.</p>
             
             <div class="format-options">
                 <div class="format-option">
                     <input type="radio" id="format-srt" name="transcription-format" value="srt" checked>
-                    <label for="format-srt">SRT (כתוביות)</label>
+                    <label for="format-srt">SRT</label>
                 </div>
-                
                 <div class="format-option">
                     <input type="radio" id="format-txt" name="transcription-format" value="txt">
-                    <label for="format-txt">טקסט פשוט</label>
+                    <label for="format-txt">TXT</label>
                 </div>
-                
                 <div class="format-option">
                     <input type="radio" id="format-json" name="transcription-format" value="json">
-                    <label for="format-json">JSON (מפורט)</label>
+                    <label for="format-json">JSON</label>
                 </div>
             </div>
             
-            <button type="button" class="transcribe-button" id="transcribe-button">תמלל את הסרטון</button>
-            <div class="loading" id="transcribe-loading">
+            <button type="button" class="cta-button" id="transcribe-button">תמלל את הסרטון</button>
+            <div class="status loading" id="transcribe-loading">
                 <div class="spinner"></div>
-                <div>מתמלל את הסרטון... התהליך עשוי להימשך מספר דקות.</div>
+                <span>מתמלל...</span>
             </div>
         </div>
     </div>
+
+    <footer>
+        <p><a href="/">חזרה לעמוד הבית</a></p>
+    </footer>
     
     <script>
-        const RENDER_SERVICE_URL = 'https://video-proxy-obqa.onrender.com';
+        const RENDER_SERVICE_URL = ''; // Use relative path for same-origin requests
         let currentVideoUrl = '';
         
-        // קריאת פרמטר URL מכתובת הדף
+        const downloadForm = document.getElementById('download-form');
+        const videoUrlInput = document.getElementById('video-url');
+        const downloadLoading = document.getElementById('download-loading');
+        const downloadError = document.getElementById('download-error');
+        const resultContainer = document.querySelector('.result-container');
+        const transcribeButton = document.getElementById('transcribe-button');
+        const transcribeLoading = document.getElementById('transcribe-loading');
+
         function getUrlParameter(name) {
             name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
             const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
@@ -263,103 +290,80 @@
             return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
         }
         
-        // טעינת כתובת הוידאו מפרמטרים והורדה אוטומטית אם יש
-        window.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('DOMContentLoaded', () => {
             const urlParam = getUrlParameter('url');
             if (urlParam) {
-                document.getElementById('video-url').value = urlParam;
-                
-                // הורדה אוטומטית
-                setTimeout(() => {
-                    document.getElementById('download-form').dispatchEvent(new Event('submit'));
-                }, 500);
+                videoUrlInput.value = urlParam;
+                downloadForm.dispatchEvent(new Event('submit'));
             }
         });
         
-        document.getElementById('download-form').addEventListener('submit', function(e) {
+        downloadForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const videoUrl = document.getElementById('video-url').value.trim();
+            const videoUrl = videoUrlInput.value.trim();
             if (!videoUrl) {
-                showError('יש להזין כתובת וידאו');
+                showError('יש להזין כתובת וידאו', downloadError);
                 return;
             }
             
-            // שמירת כתובת הוידאו הנוכחית
             currentVideoUrl = videoUrl;
             
-            // מסתיר תוצאות קודמות ושגיאות
-            document.querySelector('.result-container').style.display = 'none';
-            document.querySelector('.error').style.display = 'none';
+            resultContainer.style.display = 'none';
+            downloadError.style.display = 'none';
+            downloadLoading.style.display = 'flex';
             
-            // מציג סימן טעינה
-            document.querySelector('.loading').style.display = 'flex';
-            
-            // שליחת בקשה לשרת
-            fetch(`${RENDER_SERVICE_URL}/download?url=${encodeURIComponent(videoUrl)}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`שגיאה בהורדה (${response.status})`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (!data.success || !data.data) {
-                        throw new Error('לא התקבלו נתונים תקינים מהשרת');
-                    }
-                    
-                    // הצגת התוצאות
-                    displayResults(data.data);
-                })
-                .catch(error => {
-                    showError(error.message);
-                })
-                .finally(() => {
-                    // הסתרת סימן טעינה
-                    document.querySelector('.loading').style.display = 'none';
-                });
+            try {
+                const response = await fetch(`${RENDER_SERVICE_URL}/download?url=${encodeURIComponent(videoUrl)}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: `שגיאת שרת (${response.status})` }));
+                    throw new Error(errorData.error);
+                }
+                const data = await response.json();
+                if (!data.success || !data.data) {
+                    throw new Error(data.error || 'לא התקבלו נתונים תקינים מהשרת');
+                }
+                displayResults(data.data);
+            } catch (error) {
+                showError(error.message, downloadError);
+            } finally {
+                downloadLoading.style.display = 'none';
+            }
         });
         
-        // הוספת האזנה לכפתור התמלול
-        document.getElementById('transcribe-button').addEventListener('click', function() {
+        transcribeButton.addEventListener('click', () => {
             if (!currentVideoUrl) {
-                showError('אין סרטון זמין לתמלול');
+                alert('אין סרטון זמין לתמלול');
                 return;
             }
             
-            // קבלת הפורמט שנבחר
             const format = document.querySelector('input[name="transcription-format"]:checked').value;
             
-            // מציג סימן טעינה של התמלול
-            document.getElementById('transcribe-loading').style.display = 'flex';
+            transcribeLoading.style.display = 'flex';
             
-            // פתיחת חלון חדש עם הבקשה לתמלול
-            window.open(`${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(currentVideoUrl)}&format=${format}`, '_blank');
+            const transcribeUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(currentVideoUrl)}&format=${format}`;
+            window.open(transcribeUrl, '_blank');
             
-            // מסתיר את סימן הטעינה אחרי כמה שניות
             setTimeout(() => {
-                document.getElementById('transcribe-loading').style.display = 'none';
+                transcribeLoading.style.display = 'none';
             }, 3000);
         });
         
         function displayResults(videoData) {
-            const resultContainer = document.querySelector('.result-container');
-            
-            // עדכון פרטי הוידאו
             document.querySelector('.video-title').textContent = videoData.title || 'וידאו ללא כותרת';
             
+            const thumbnail = document.querySelector('.video-thumbnail');
             if (videoData.thumbnail) {
-                document.querySelector('.video-thumbnail').src = videoData.thumbnail;
-                document.querySelector('.video-thumbnail').style.display = 'block';
+                thumbnail.src = videoData.thumbnail;
+                thumbnail.style.display = 'block';
             } else {
-                document.querySelector('.video-thumbnail').style.display = 'none';
+                thumbnail.style.display = 'none';
             }
             
             document.querySelector('.video-author').textContent = videoData.author ? `יוצר: ${videoData.author}` : '';
-            document.querySelector('.video-duration').textContent = videoData.duration ? `אורך: ${videoData.duration}` : '';
+            document.querySelector('.video-duration').textContent = videoData.duration ? `אורך: ${videoData.duration} שניות` : '';
             document.querySelector('.video-source').textContent = `מקור: ${videoData.source || 'לא ידוע'}`;
             
-            // יצירת קישורי הורדה
             const linksContainer = document.querySelector('.download-links');
             linksContainer.innerHTML = '';
             
@@ -371,26 +375,22 @@
                     
                     const li = document.createElement('li');
                     li.innerHTML = `
-                        <span>${fileType} ${quality} (${extension})</span>
+                        <span>${fileType} ${quality} (.${extension})</span>
                         <a href="${media.url}" target="_blank" download class="download-link">הורד</a>
                     `;
-                    
                     linksContainer.appendChild(li);
                 });
             } else {
                 linksContainer.innerHTML = '<li>לא נמצאו קישורי הורדה</li>';
             }
             
-            // הצגת התוצאות
             resultContainer.style.display = 'block';
         }
         
-        function showError(message) {
-            const errorElement = document.querySelector('.error');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-            document.querySelector('.loading').style.display = 'none';
+        function showError(message, element) {
+            element.textContent = message;
+            element.style.display = 'block';
         }
     </script>
 </body>
-</html> 
+</html>

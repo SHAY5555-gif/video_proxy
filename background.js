@@ -57,14 +57,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // טיפול בבקשה לתמלול
   if (request.action === 'transcribeVideo') {
     const { videoUrl, format } = request;
-    const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${format}`;
-    
-    // פתיחת חלון חדש עם התמלול
-    chrome.tabs.create({ url: transcriptionUrl }, (tab) => {
-      sendResponse({ success: true, tabId: tab.id });
-    });
-    
-    return true; // החזרת true לאפשר sendResponse אסינכרוני
+    (async () => {
+      let userIdParam = '';
+      try {
+        if (typeof getCurrentUserId === 'function') {
+          const uid = await getCurrentUserId();
+          if (uid) userIdParam = `&user_id=${encodeURIComponent(uid)}`;
+        }
+      } catch (e) {}
+      const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${format}${userIdParam}`;
+      chrome.tabs.create({ url: transcriptionUrl }, (tab) => {
+        sendResponse({ success: true, tabId: tab.id });
+      });
+    })();
+    return true; // keep channel alive until async completes
   }
   
   // בדיקת זמינות השירות

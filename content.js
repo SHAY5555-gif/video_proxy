@@ -172,19 +172,9 @@ function removeExistingMenu() {
 }
 
 /**
- * טיפול בלחיצה מחוץ לתפריט
- */
-function handleOutsideClick(event) {
-  const menu = document.querySelector('.youtube-transcribe-menu');
-  if (menu && !menu.contains(event.target) && !event.target.classList.contains('youtube-transcribe-btn')) {
-    removeExistingMenu();
-  }
-}
-
-/**
  * התחלת תהליך התמלול
  */
-function startTranscription(videoUrl, format) {
+async function startTranscription(videoUrl, format) {
   if (transcriptionInProgress) {
     showNotification('תמלול כבר מתבצע. המתן לסיומו.', 3000);
     return;
@@ -193,8 +183,16 @@ function startTranscription(videoUrl, format) {
   transcriptionInProgress = true;
   showNotification('מתחיל תהליך תמלול... הדפדפן יפתח חלון חדש עם התוצאה.', 5000);
   
-  // בניית כתובת התמלול
-  const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${format}`;
+  let userIdParam = '';
+  try {
+    if (typeof window.getCurrentUserId === 'function') {
+      const uid = await window.getCurrentUserId();
+      if (uid) userIdParam = `&user_id=${encodeURIComponent(uid)}`;
+    }
+  } catch (e) {
+    console.warn('[YouTube Transcribe] Could not resolve user id:', e);
+  }
+  const transcriptionUrl = `${RENDER_SERVICE_URL}/transcribe?url=${encodeURIComponent(videoUrl)}&format=${format}${userIdParam}`;
   
   // פתיחת חלון חדש עם תוצאת התמלול
   window.open(transcriptionUrl, '_blank');
