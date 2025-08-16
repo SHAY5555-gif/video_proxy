@@ -12,11 +12,6 @@ services:
         sync: false
       - key: RAPIDAPI_KEY
         sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_PROJECT_ID
-        sync: false
+      # Supabase variables removed (no database usage)
     healthCheckPath: /health
     autoDeploy: true 

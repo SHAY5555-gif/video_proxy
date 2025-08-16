@@ -3,6 +3,7 @@
  * שירות לתמלול סרטוני יוטיוב באמצעות ElevenLabs
  */
 
+require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
 const { setTimeout } = require('timers/promises');
@@ -12,18 +13,10 @@ const os = require('os');
 const FormData = require('form-data');
 const https = require('https');
 const http = require('http');
-const { createClient } = require('@supabase/supabase-js');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
-// Update Supabase configuration with direct values
-const supabaseUrl = 'https://revvbfxlqavgjegqeqdc.supabase.co';
-const supabaseServiceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJldnZiZnhscWF2Z2plcWRjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MzUyNzIyMSwiZXhwIjoyMDU5MTAzMjIxfQ.aV1K9hm40fhriIaRF9CBdHFzWLk5n3FzqsbTc5RjnAs';
-// Replace supabase-server-config import with direct initialization
-const supabaseServer = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-// Log key prefix to verify correct key is used
-console.log(`[Supabase Init] Using URL=${supabaseUrl}, key prefix=${supabaseServiceRoleKey.slice(0,8)}`);
+const multer = require('multer');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+// Database logging disabled: Supabase/Prisma removed
 
 // הגדרות בסיסיות
 const app = express();
@@ -31,6 +24,25 @@ const PORT = process.env.PORT || 8081;
 
 // הפעלת CORS
 app.use(require('cors')());
+app.use(express.json({ limit: '2mb' }));
+
+// קביעת Multer לזיכרון (ללא שמירה לדיסק)
+const upload = multer({
+	storage: multer.memoryStorage(),
+	limits: { fileSize: 1024 * 1024 * 512 } // עד 512MB
+});
+
+// הגדרת לקוח S3 (GCS S3-compatible עם HMAC)
+const gcsS3Bucket = process.env.GCS_S3_BUCKET;
+const s3Client = new S3Client({
+	region: process.env.GCS_S3_REGION || 'auto',
+	credentials: {
+		accessKeyId: process.env.GCS_S3_ACCESS_KEY_ID || '',
+		secretAccessKey: process.env.GCS_S3_SECRET_ACCESS_KEY || ''
+	},
+	endpoint: process.env.GCS_S3_ENDPOINT || 'https://storage.googleapis.com',
+	forcePathStyle: (process.env.GCS_S3_FORCE_PATH_STYLE || 'true') === 'true'
+});
 
 // Middleware לתיעוד בקשות
 app.use((req, res, next) => {
@@ -180,13 +192,14 @@ app.get('/privacy-policy', (req, res) => {
             </ul>
 
             <h2>אחסון נתונים</h2>
-            <p>אנו משתמשים ב-Supabase, שירות מסד נתונים מאובטח, לאחסון פרטי החשבון והעדפות התמלול שלך. הנתונים שלך מאוחסנים באופן מאובטח ומוגנים באמצעי אבטחה סטנדרטיים בתעשייה.</p>
+            <p>איננו שומרים נתונים ארוכי טווח במסד נתונים. קבצים זמניים נוצרים לצורך עיבוד ונמחקים אוטומטית. בעת שימוש בהעלאת קבצים, ייתכן שנשתמש באחסון ענן לצורך עיבוד בלבד.</p>
 
             <h2>שירותי צד שלישי</h2>
-            <p>השירות שלנו משתלב עם שירותי צד שלישי הבאים:</p>
+            <p>השירות שלנו משתמש בשירותים הבאים לצורך עיבוד:</p>
             <ul>
-                <li><strong>אימות גוגל:</strong> לאימות משתמשים. אנא עיין ב<a href="https://policies.google.com/privacy" target="_blank">מדיניות הפרטיות של גוגל</a> למידע על אופן הטיפול שלהם בנתונים שלך.</li>
-                <li><strong>Supabase:</strong> לאחסון נתונים. אנא עיין ב<a href="https://supabase.io/privacy" target="_blank">מדיניות הפרטיות של Supabase</a> למידע על אופן הטיפול שלהם בנתונים שלך.</li>
+                <li><strong>ElevenLabs:</strong> לעיבוד תמלול אודיו.</li>
+                <li><strong>RapidAPI/ZMIO:</strong> להשגת קישורי הורדה לתוכן, כאשר רלוונטי.</li>
+                <li><strong>אחסון ענן תואם S3:</strong> לשיתוף זמני של קבצים לעיבוד.</li>
             </ul>
 
             <h2>שיתוף נתונים</h2>
@@ -604,25 +617,7 @@ app.get('/transcribe', async (req, res) => {
                 
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.json"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.json')}`);
-            
-            // record usage server-side to Supabase
-            try {
-                console.log(`[${requestId}] Prisma: attempting to record usage for user ${userId || 'anonymous'}, duration=${usageSeconds}s`);
-                const record = await prisma.transcribeEvent.create({
-                    data: {
-                        userId: userId,
-                        videoId: fileNameUsage,
-                        provider: 'youtube',
-                        videoDuration: Math.round(usageSeconds),
-                        audioSeconds: Math.round(usageSeconds),
-                        billedSeconds: billedSeconds,
-                        success: true,
-                    },
-                });
-                console.log(`[${requestId}] Prisma: successfully recorded usage for user ${userId || 'anonymous'}, record:`, record);
-            } catch (err) {
-                console.error(`[${requestId}] Prisma error recording usage:`, err);
-            }
+            // usage logging disabled (no DB)
 
             return res.json(jsonResponse);
         } else if (format === 'srt') {
@@ -701,7 +696,7 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.srt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.srt')}`);
             
-            // after assembling SRT, record usage
+            // after assembling SRT, usage logging disabled (no DB)
             let durationSeconds = parseFloat(req.query.duration_seconds);
             if (isNaN(durationSeconds) || durationSeconds === 0) {
                 if (data && data.words && Array.isArray(data.words) && data.words.length > 0) {
@@ -713,23 +708,7 @@ app.get('/transcribe', async (req, res) => {
             }
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
             
-            try {
-                console.log(`[${requestId}] Prisma: attempting to record SRT usage for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
-                const record = await prisma.transcribeEvent.create({
-                    data: {
-                        userId: userId,
-                        videoId: actualVideoId || actualVideoUrl,
-                        provider: 'zmio',
-                        videoDuration: Math.round(durationSeconds),
-                        audioSeconds: Math.round(durationSeconds),
-                        billedSeconds: billedSeconds,
-                        success: true,
-                    },
-                });
-                console.log(`[${requestId}] Prisma: successfully recorded SRT usage for user ${userId || 'anonymous'}, record:`, record);
-            } catch (err) {
-                console.error(`[${requestId}] Prisma error recording SRT usage:`, err);
-            }
+            // no-op
             
             return res.send(srtContent);
         } else if (format === 'txt') {
@@ -756,27 +735,10 @@ app.get('/transcribe', async (req, res) => {
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="transcript.txt"; filename*=UTF-8''${encodeURIComponent(safeFileName + '.txt')}`);
             
-            // after assembling TXT, record usage
+            // after assembling TXT, usage logging disabled (no DB)
             const durationSeconds = parseFloat(req.query.duration_seconds) || (parseFloat(apiMetadata.duration) || 0);
             const billedSeconds = Math.ceil(durationSeconds / 15) * 15;
-            
-            try {
-                console.log(`[${requestId}] Prisma: attempting to record TXT usage for user ${userId || 'anonymous'}, duration=${durationSeconds}s`);
-                const record = await prisma.transcribeEvent.create({
-                    data: {
-                        userId: userId,
-                        videoId: actualVideoId || actualVideoUrl,
-                        provider: 'zmio',
-                        videoDuration: Math.round(durationSeconds),
-                        audioSeconds: Math.round(durationSeconds),
-                        billedSeconds: billedSeconds,
-                        success: true,
-                    },
-                });
-                console.log(`[${requestId}] Prisma: successfully recorded TXT usage for user ${userId || 'anonymous'}, record:`, record);
-            } catch (err) {
-                console.error(`[${requestId}] Prisma error recording TXT usage:`, err);
-            }
+            // no-op
             
             return res.send(plainText);
         } else {
@@ -784,27 +746,7 @@ app.get('/transcribe', async (req, res) => {
         }
 
     } catch (error) {
-        // record failure usage event to Supabase
-        try {
-            const failureDuration = parseFloat(req.query.duration_seconds) || 0;
-            const failureBilled = Math.ceil(failureDuration / 15) * 15;
-            console.log(`[${requestId}] Supabase: attempting to insert FAILED usage record for user ${userId || 'anonymous'}, duration=${failureDuration}s`);
-            const { data, error } = await supabaseServer.from('transcribe_events').insert({
-                user_id: userId,
-                video_id: actualVideoId || null,
-                audio_seconds: Math.round(failureDuration),
-                billed_seconds: failureBilled,
-                success: false
-            });
-            
-            if (error) {
-                console.error(`[${requestId}] Supabase: failed to record failure usage:`, error);
-            } else {
-                console.log(`[${requestId}] Supabase: successfully recorded failure usage for user ${userId || 'anonymous'}, data:`, data);
-            }
-        } catch (usageErr) {
-            console.error(`[${requestId}] Supabase: failed to record failure usage:`, usageErr);
-        }
+        // failure usage logging disabled (no DB)
         console.error(`[${requestId}] שגיאת תמלול:`, error);
 
         return res.status(500).json({
@@ -821,6 +763,56 @@ app.get('/transcribe-youtube', (req, res) => {
 
 app.get('/transcribe-other', (req, res) => {
     res.send(getTranscribeFormHTML('other'));
+});
+
+// עמוד העלאה ידנית של אודיו/וידאו
+app.get('/upload', (req, res) => {
+	res.send(`
+	<!DOCTYPE html>
+	<html lang="he" dir="rtl">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>העלאת אודיו/וידאו</title>
+		<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
+		<style>
+			body{font-family:'Assistant',sans-serif;background:#f4f7f9;margin:0;color:#333}
+			.container{max-width:700px;margin:40px auto;background:#fff;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,.05);padding:30px}
+			label{display:block;margin:12px 0 6px;font-weight:600}
+			input[type=file]{display:block;margin-bottom:16px}
+			button{background:#3498db;color:#fff;border:0;border-radius:6px;padding:12px 18px;cursor:pointer;font-weight:700}
+			pre{background:#f8f9fb;padding:12px;border-radius:6px;overflow:auto}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<h1>העלאת אודיו/וידאו</h1>
+			<form id="f" enctype="multipart/form-data">
+				<label>בחר קובץ:</label>
+				<input type="file" name="file" accept="audio/*,video/*" required />
+				<button type="submit">העלה ותמלל</button>
+			</form>
+			<h3>תוצאה</h3>
+			<pre id="out"></pre>
+		</div>
+		<script>
+		const out = document.getElementById('out');
+		document.getElementById('f').addEventListener('submit', async (e)=>{
+			e.preventDefault();
+			out.textContent = 'מעלה...';
+			const fd = new FormData(e.target);
+			try{
+				const r = await fetch('/api/upload', {method:'POST', body: fd});
+				const j = await r.json();
+				out.textContent = JSON.stringify(j, null, 2);
+			}catch(err){
+				out.textContent = 'שגיאה: ' + err.message;
+			}
+		});
+		</script>
+	</body>
+	</html>
+	`);
 });
 
 function getTranscribeFormHTML(platform) {
@@ -1058,6 +1050,7 @@ app.get('/', (req, res) => {
                     <div class="platform-buttons">
                         <a href="/transcribe-youtube" class="cta-button">תמלול מיוטיוב</a>
                         <a href="/transcribe-other" class="cta-button">תמלול מפלטפורמות אחרות</a>
+                        <a href="/upload" class="cta-button">העלאת אודיו/וידאו</a>
                     </div>
                 </div>
             </div>
@@ -1236,13 +1229,93 @@ app.get('/download-test', (req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, 'download-test.html'));
 });
 
- // הפעלת השרת
- app.listen(PORT, () => {
-    console.log(`השרת פועל על פורט ${PORT}`);
-    console.log(`שירות תמלול יוטיוב זמין בכתובות:`);
-    console.log(`- ממשק משתמש: http://localhost:${PORT}/`);
-    console.log(`- טופס תמלול: http://localhost:${PORT}/transcribe-form`);
-    console.log(`- API: http://localhost:${PORT}/transcribe?url=YOUTUBE_URL&format=srt|txt|json`);
+/**
+ * API: העלאת אודיו/וידאו → העלאה ל-GCS (S3-compatible) → יצירת Signed GET → שליחה ל-ElevenLabs
+ */
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'לא התקבל קובץ בטופס (שדה file)' });
+        }
+        if (!gcsS3Bucket) {
+            return res.status(500).json({ success: false, error: 'לא הוגדר דלי GCS (GCS_S3_BUCKET)' });
+        }
+
+        const originalName = req.file.originalname || 'upload.bin';
+        const safeName = originalName.replace(/[^\w\.-]/g, '_');
+        const key = `inbox/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+
+        // העלאה ל-GCS באמצעות S3 API
+        const putCmd = new PutObjectCommand({
+            Bucket: gcsS3Bucket,
+            Key: key,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype || 'application/octet-stream'
+        });
+        await s3Client.send(putCmd);
+        console.log(`[${requestId}] הועלה ל-GCS: s3://${gcsS3Bucket}/${key}`);
+
+        // יצירת Signed GET זמני (2 שעות)
+        const getCmd = new GetObjectCommand({ Bucket: gcsS3Bucket, Key: key });
+        const signedUrl = await getSignedUrl(s3Client, getCmd, { expiresIn: 2 * 60 * 60 });
+
+        // שליחה ל-ElevenLabs לתמלול ב-URL
+        const elUrl = 'https://api.elevenlabs.io/v1/speech-to-text';
+        const body = {
+            cloud_storage_url: signedUrl,
+            model_id: 'scribe_v1',
+            timestamps_granularity: 'word',
+            language: ''
+        };
+        const elResp = await fetch(elUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'xi-api-key': ELEVENLABS_API_KEY || ''
+            },
+            body: JSON.stringify(body)
+        });
+        if (!elResp.ok) {
+            const txt = await elResp.text();
+            throw new Error(`ElevenLabs ${elResp.status}: ${txt.slice(0,300)}`);
+        }
+        const elJson = await elResp.json();
+
+        return res.json({
+            success: true,
+            bucket: gcsS3Bucket,
+            key,
+            signed_get_url: signedUrl,
+            elevenlabs: elJson
+        });
+    } catch (err) {
+        console.error('שגיאה בהעלאה/תמלול:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
 });
+
+	// הפעלת השרת עם נפילה אוטומטית לפורט אחר בזמן פיתוח
+	const isProduction = process.env.NODE_ENV === 'production';
+	function startServer(desiredPort, attemptsLeft = 5) {
+		const server = app.listen(desiredPort, () => {
+			console.log(`השרת פועל על פורט ${desiredPort}`);
+			console.log(`שירות תמלול יוטיוב זמין בכתובות:`);
+			console.log(`- ממשק משתמש: http://localhost:${desiredPort}/`);
+			console.log(`- טופס תמלול: http://localhost:${desiredPort}/transcribe-form`);
+			console.log(`- API: http://localhost:${desiredPort}/transcribe?url=YOUTUBE_URL&format=srt|txt|json`);
+		});
+		server.on('error', (err) => {
+			if (!isProduction && err && err.code === 'EADDRINUSE' && attemptsLeft > 0) {
+				const nextPort = desiredPort + 1;
+				console.warn(`פורט ${desiredPort} בשימוש. מנסה את הפורט הבא: ${nextPort}`);
+				startServer(nextPort, attemptsLeft - 1);
+			} else {
+				console.error('אירעה שגיאה בעת הפעלת השרת:', err && err.message ? err.message : err);
+				process.exit(1);
+			}
+		});
+	}
+	startServer(PORT);
 
 

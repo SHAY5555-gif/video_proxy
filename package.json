@@ -4,7 +4,7 @@
   "description": "שירות לתמלול סרטוני יוטיוב באמצעות ElevenLabs",
   "main": "src/server/index.js",
   "scripts": {
-    "postinstall": "npx prisma db push && npx prisma generate --no-engine",
+    "postinstall": "node scripts/postinstall.cjs",
     "start": "node src/server/index.js",
     "dev": "nodemon src/server/index.js"
   },
@@ -18,17 +18,18 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^6.7.0",
-    "@supabase/supabase-js": "^2.0.0",
+    
+    "@aws-sdk/client-s3": "^3.637.0",
+    "@aws-sdk/s3-request-presigner": "^3.637.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.21.2",
     "form-data": "^4.0.2",
+    "multer": "^2.0.0",
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9",
-    "prisma": "^6.7.0"
+    "nodemon": "^3.1.9"
   },
   "engines": {
     "node": ">=14.0.0"
